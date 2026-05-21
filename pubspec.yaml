@@ -1,0 +1,68 @@
+name: hr_enterprise
+description: Enterprise HR & Employee Management System
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Firebase
+  firebase_core: ^3.13.0
+  firebase_auth: ^5.5.2
+  cloud_firestore: ^5.6.6
+  firebase_storage: ^12.4.5
+  firebase_messaging: ^15.2.5
+
+  # State & routing
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.8.1
+
+  # UI
+  fl_chart: ^0.70.2
+  flutter_animate: ^4.5.2
+  responsive_framework: ^1.5.1
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.4.1
+
+  # Auth & storage
+  google_sign_in: ^6.2.2
+  shared_preferences: ^2.5.3
+
+  # Utilities
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  file_picker: ^8.3.7
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.4
+  equatable: ^2.0.7
+
+  # QR attendance
+  mobile_scanner: ^6.0.2
+  qr_flutter: ^4.1.0
+
+  # Export
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  excel: ^4.0.6
+  path_provider: ^2.1.5
+
+  # Push & biometric
+  flutter_local_notifications: ^18.0.1
+  local_auth: ^2.3.0
+  flutter_secure_storage: ^9.2.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

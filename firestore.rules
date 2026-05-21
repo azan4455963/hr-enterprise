@@ -1,0 +1,134 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return userDoc().role;
+    }
+
+    function permissions() {
+      return userDoc().permissions;
+    }
+
+    function hasPerm(perm) {
+      return userExists() && (
+        permissions().hasAny(['*']) ||
+        permissions().hasAny([perm])
+      );
+    }
+
+    function isAdminRole() {
+      return userExists() && role() == 'super_admin';
+    }
+
+    function isManager() {
+      return userExists() && role() == 'manager';
+    }
+
+    function sameDepartment(departmentId) {
+      return userDoc().departmentId == departmentId;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId || isAdminRole()
+      );
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId || isAdminRole()
+      );
+      allow delete: if isAdminRole();
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isSignedIn() && hasPerm('employees_view');
+      allow create, update, delete: if isSignedIn() && (
+        hasPerm('employees_edit') || hasPerm('employees_create') || hasPerm('employees_delete')
+      );
+    }
+
+    function hasLinkedEmployee() {
+      return userDoc().employeeId != null && userDoc().employeeId != '';
+    }
+
+    match /attendance/{id} {
+      allow read: if isSignedIn() && hasPerm('attendance_view');
+      allow create: if isSignedIn() && hasPerm('attendance_view') &&
+        hasLinkedEmployee() &&
+        request.resource.data.employeeId == userDoc().employeeId;
+      allow update: if isSignedIn() && hasPerm('attendance_view') &&
+        hasLinkedEmployee() &&
+        resource.data.employeeId == userDoc().employeeId;
+      allow delete: if isSignedIn() && hasPerm('attendance_edit');
+    }
+
+    match /attendance_qr_sessions/{id} {
+      allow read: if isSignedIn() && hasPerm('attendance_view');
+      allow write: if isSignedIn() && hasPerm('attendance_edit');
+    }
+
+    match /leave_requests/{id} {
+      allow read: if isSignedIn() && hasPerm('leave_view');
+      allow create: if isSignedIn() && hasPerm('leave_create');
+      allow update: if isSignedIn() && (
+        hasPerm('leave_approve') ||
+        (hasPerm('leave_create') && resource.data.employeeId == userDoc().employeeId)
+      );
+      allow delete: if hasPerm('leave_approve');
+    }
+
+    match /payroll/{id} {
+      allow read: if isSignedIn() && hasPerm('payroll_view');
+      allow write: if isSignedIn() && hasPerm('payroll_edit');
+    }
+
+    match /onboarding_links/{id} {
+      allow read: if true;
+      allow write: if isSignedIn() && hasPerm('onboarding_create');
+    }
+
+    match /onboarding_submissions/{id} {
+      allow read: if isSignedIn() && hasPerm('onboarding_view');
+      allow create, update: if true;
+      allow delete: if isSignedIn() && hasPerm('onboarding_create');
+    }
+
+    match /notifications/{id} {
+      allow read: if isSignedIn() && hasPerm('notifications_view');
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && hasPerm('notifications_view');
+    }
+
+    match /audit_logs/{id} {
+      allow read: if isSignedIn() && hasPerm('audit_view');
+      allow create: if isSignedIn();
+    }
+
+    match /company_settings/{id} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && hasPerm('settings_edit');
+    }
+
+    match /fcm_tokens/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /departments/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdminRole();
+    }
+  }
+}

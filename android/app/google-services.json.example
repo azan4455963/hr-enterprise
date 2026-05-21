@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "486389640041",
+    "project_id": "hr-enterprise-92fac",
+    "storage_bucket": "hr-enterprise-92fac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:486389640041:android:REPLACE_ME",
+        "android_client_info": {
+          "package_name": "com.hrenterprise.hr_enterprise"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "YOUR_ANDROID_API_KEY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
