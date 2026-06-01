@@ -14,7 +14,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/service_providers.dart';
 import '../widgets/employee_search_dialog.dart';
-import '../widgets/starfield_background.dart';
+import '../widgets/dashboard_background.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -47,7 +47,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     final canViewSalary =
         user != null && ref.watch(rbacServiceProvider).canViewSalary(user);
 
-    return StarfieldBackground(
+    return DashboardBackground(
       child: SingleChildScrollView(
         padding: EdgeInsets.all(isDesktop ? 20 : 14),
         child: Column(

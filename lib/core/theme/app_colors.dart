@@ -34,18 +34,20 @@ class AppColors {
             : [const Color(0xFF6366F1), const Color(0xFF818CF8)],
       );
 
-  /// Login screen — indigo + brand cyan, soft professional gradient.
-  /// Premium dashboard — deep space gradient.
-  static const LinearGradient premiumBackground = LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
+  /// Login + dashboard dark backdrop — indigo → teal, soft professional.
+  static const LinearGradient dashboardDarkGradient = LinearGradient(
+    begin: Alignment(-0.8, -1),
+    end: Alignment(1.2, 1.2),
     colors: [
-      Color(0xFF0D0D2B),
-      Color(0xFF1A1A5E),
-      Color(0xFF0D2D5E),
+      Color(0xFF0B1220),
+      Color(0xFF1E1B4B),
+      Color(0xFF134E4A),
     ],
-    stops: [0.0, 0.4, 1.0],
+    stops: [0.0, 0.55, 1.0],
   );
+
+  /// Alias for premium/glass screens using the dashboard palette.
+  static const LinearGradient premiumBackground = dashboardDarkGradient;
 
   static Color premiumGlassBorder = Colors.white.withValues(alpha: 0.12);
   static Color premiumGlassSurface = Colors.white.withValues(alpha: 0.06);
@@ -54,16 +56,7 @@ class AppColors {
 
   static BoxDecoration loginBackground(bool isDark) => BoxDecoration(
         gradient: isDark
-            ? const LinearGradient(
-                begin: Alignment(-0.8, -1),
-                end: Alignment(1.2, 1.2),
-                colors: [
-                  Color(0xFF0B1220),
-                  Color(0xFF1E1B4B),
-                  Color(0xFF134E4A),
-                ],
-                stops: [0.0, 0.55, 1.0],
-              )
+            ? dashboardDarkGradient
             : const LinearGradient(
                 begin: Alignment(-0.6, -1),
                 end: Alignment(1.1, 1),
