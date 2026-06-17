@@ -184,6 +184,11 @@ final auditLogsProvider = StreamProvider<List<AuditLogModel>>((ref) {
   return ref.watch(auditServiceProvider).watchLogs(limit: 25);
 });
 
+/// Full activity feed for the admin Activity Log screen.
+final allAuditLogsProvider = StreamProvider<List<AuditLogModel>>((ref) {
+  return ref.watch(auditServiceProvider).watchLogs(limit: 300);
+});
+
 final unreadNotificationsCountProvider = Provider<int>((ref) {
   return ref.watch(notificationsProvider).when(
         data: (list) => list.where((n) => !n.isRead).length,
