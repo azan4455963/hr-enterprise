@@ -45,6 +45,7 @@ class RbacService {
     'employees': can(user, 'employees_view'),
     'employee-search': can(user, 'employees_view'),
     'departments': can(user, 'departments_manage'),
+    'my-department': user.role == RolePermissions.manager,
     'attendance': can(user, 'attendance_view'),
     'leave': can(user, 'leave_view'),
     'payroll': can(user, 'payroll_view'),

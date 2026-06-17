@@ -10,6 +10,7 @@ import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/departments/screens/departments_screen.dart';
+import '../../features/departments/screens/my_department_screen.dart';
 import '../../features/employees/screens/employee_detail_screen.dart';
 import '../../features/employees/screens/employee_form_screen.dart';
 import '../../features/employees/screens/employee_overview_screen.dart';
@@ -78,6 +79,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/departments',
             builder: (context, state) => const DepartmentsScreen(),
+          ),
+          GoRoute(
+            path: '/my-department',
+            builder: (context, state) => const MyDepartmentScreen(),
           ),
           GoRoute(
             path: '/employees',
