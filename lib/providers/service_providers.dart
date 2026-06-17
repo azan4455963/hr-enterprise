@@ -21,6 +21,7 @@ import '../services/onboarding_service.dart';
 import '../services/payroll_service.dart';
 import '../services/rbac_service.dart';
 import '../services/storage_service.dart';
+import '../services/user_admin_service.dart';
 
 final userRepositoryProvider = Provider<UserRepository>((ref) => UserRepository());
 final employeeRepositoryProvider =
@@ -82,4 +83,7 @@ final biometricServiceProvider =
     Provider<BiometricService>((ref) => BiometricService());
 final departmentServiceProvider = Provider<DepartmentService>((ref) {
   return DepartmentService(userRepository: ref.watch(userRepositoryProvider));
+});
+final userAdminServiceProvider = Provider<UserAdminService>((ref) {
+  return UserAdminService(userRepository: ref.watch(userRepositoryProvider));
 });

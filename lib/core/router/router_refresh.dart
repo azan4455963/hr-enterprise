@@ -42,6 +42,8 @@ class RouterRefreshNotifier extends ChangeNotifier {
 
       final user = userProfile.valueOrNull;
       if (user != null) {
+        // Disabled accounts cannot use the app.
+        if (!user.isActive) return '/unauthorized';
         final requiredPerm = RoutePermissions.permissionForPath(path);
         if (requiredPerm != null && !user.hasPermission(requiredPerm)) {
           return '/unauthorized';
