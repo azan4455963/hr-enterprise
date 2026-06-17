@@ -130,5 +130,23 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdminRole();
     }
+
+    match /google_sheets/{id} {
+      allow read: if isSignedIn() && hasPerm('googleSheets_view');
+      allow write: if isSignedIn() && (
+        hasPerm('googleSheets_create') ||
+        hasPerm('googleSheets_edit') ||
+        hasPerm('googleSheets_delete')
+      );
+    }
+
+    match /drive_links/{id} {
+      allow read: if isSignedIn() && hasPerm('googleSheets_view');
+      allow write: if isSignedIn() && (
+        hasPerm('googleSheets_create') ||
+        hasPerm('googleSheets_edit') ||
+        hasPerm('googleSheets_delete')
+      );
+    }
   }
 }
