@@ -14,11 +14,13 @@ final googleSheetsListProvider = StreamProvider<List<GoogleSheetModel>>((ref) {
   return ref.watch(googleSheetsServiceProvider).watchSheets();
 });
 
-/// Provider for fetching sheet data (CSV) on demand
-final googleSheetDataProvider =
-    FutureProvider.family<List<List<String>>, String>((ref, sheetId) async {
-      return ref.watch(googleSheetsServiceProvider).fetchSheetData(sheetId);
-    });
+/// Provider for fetching sheet data (CSV) on demand for a specific tab (gid).
+final googleSheetDataProvider = FutureProvider.family<List<List<String>>,
+    ({String sheetId, int gid})>((ref, key) async {
+  return ref
+      .watch(googleSheetsServiceProvider)
+      .fetchSheetData(key.sheetId, sheetIndex: key.gid);
+});
 
 /// Ticks every 2 minutes so dependent providers auto-refresh.
 /// Google "publish to web" has no push channel, so we poll.
@@ -43,7 +45,8 @@ final sheetSummariesProvider = FutureProvider<List<SheetSummary>>((ref) async {
   final summaries = <SheetSummary>[];
   for (final sheet in sheets) {
     try {
-      final rows = await service.fetchSheetData(sheet.sheetId);
+      final rows =
+          await service.fetchSheetData(sheet.sheetId, sheetIndex: sheet.gid);
       summaries.add(service.buildSummary(sheet: sheet, rows: rows));
     } catch (e) {
       summaries.add(SheetSummary.error(sheet, e.toString()));
@@ -64,7 +67,8 @@ final allAttendanceSheetSummariesProvider =
   final result = <AttendanceSheetSummary>[];
   for (final sheet in sheets) {
     try {
-      final rows = await service.fetchSheetData(sheet.sheetId);
+      final rows =
+          await service.fetchSheetData(sheet.sheetId, sheetIndex: sheet.gid);
       final summary = service.buildAttendanceSummary(sheet: sheet, rows: rows);
       if (summary != null) result.add(summary);
     } catch (_) {
@@ -123,7 +127,8 @@ final employeeSheetRecordsProvider = FutureProvider.family<List<SheetMatch>,
   final matches = <SheetMatch>[];
   for (final sheet in sheets) {
     try {
-      final rows = await service.fetchSheetData(sheet.sheetId);
+      final rows =
+          await service.fetchSheetData(sheet.sheetId, sheetIndex: sheet.gid);
       final found =
           service.findRowsFor(rows: rows, name: key.name, email: key.email);
       if (found.isNotEmpty) {

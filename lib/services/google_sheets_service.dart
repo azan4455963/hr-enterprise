@@ -45,6 +45,7 @@ class GoogleSheetsService {
       'title': title,
       'url': url,
       'sheetId': sheetId,
+      'gid': GoogleSheetModel.extractGid(url),
       'addedBy': addedBy,
       'addedAt': Timestamp.now(),
       'order': count,
@@ -58,6 +59,7 @@ class GoogleSheetsService {
     if (url != null) {
       updates['url'] = url;
       updates['sheetId'] = GoogleSheetModel.extractSheetId(url);
+      updates['gid'] = GoogleSheetModel.extractGid(url);
     }
     await _sheetsRef.doc(docId).update(updates);
   }

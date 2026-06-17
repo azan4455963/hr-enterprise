@@ -5,6 +5,7 @@ import '../models/attendance_model.dart';
 import '../models/attendance_qr_session_model.dart';
 import '../models/audit_log_model.dart';
 import '../models/company_settings_model.dart';
+import '../models/department_model.dart';
 import '../models/employee_model.dart';
 import '../models/leave_model.dart';
 import '../models/notification_model.dart';
@@ -16,6 +17,10 @@ import 'service_providers.dart';
 
 final companySettingsProvider = StreamProvider<CompanySettingsModel>((ref) {
   return ref.watch(companySettingsServiceProvider).watchSettings();
+});
+
+final departmentsProvider = StreamProvider<List<DepartmentModel>>((ref) {
+  return ref.watch(departmentServiceProvider).watchDepartments();
 });
 
 final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {

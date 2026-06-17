@@ -28,7 +28,7 @@ class _GoogleSheetViewerScreenState
 
   @override
   Widget build(BuildContext context) {
-    final sheetData = ref.watch(googleSheetDataProvider(sheet.sheetId));
+    final sheetData = ref.watch(googleSheetDataProvider((sheetId: sheet.sheetId, gid: sheet.gid)));
     final user = ref.watch(currentUserProvider).valueOrNull;
     final canImport = user?.hasPermission('employees_create') ?? false;
 
@@ -67,7 +67,7 @@ class _GoogleSheetViewerScreenState
             icon: const Icon(Icons.refresh_rounded, color: AppColors.textMuted),
             tooltip: 'Refresh data',
             onPressed: () =>
-                ref.invalidate(googleSheetDataProvider(sheet.sheetId)),
+                ref.invalidate(googleSheetDataProvider((sheetId: sheet.sheetId, gid: sheet.gid))),
           ),
           IconButton(
             icon: const Icon(
@@ -243,7 +243,7 @@ class _GoogleSheetViewerScreenState
   }
 
   Future<void> _importEmployees(BuildContext context, String userId) async {
-    final rows = ref.read(googleSheetDataProvider(sheet.sheetId)).valueOrNull;
+    final rows = ref.read(googleSheetDataProvider((sheetId: sheet.sheetId, gid: sheet.gid))).valueOrNull;
     if (rows == null || rows.length < 2) {
       _snack('Sheet has no data rows to import.');
       return;

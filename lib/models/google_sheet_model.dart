@@ -11,6 +11,9 @@ class GoogleSheetModel {
   final DateTime addedAt;
   final int order;
 
+  /// Which tab (gid) of the spreadsheet to read. 0 = first tab.
+  final int gid;
+
   /// When true, this sheet auto-syncs its rows into the employees collection
   /// on every background refresh.
   final bool syncEmployees;
@@ -23,6 +26,7 @@ class GoogleSheetModel {
     required this.addedBy,
     required this.addedAt,
     required this.order,
+    this.gid = 0,
     this.syncEmployees = false,
   });
 
@@ -35,6 +39,7 @@ class GoogleSheetModel {
       addedBy: map['addedBy'] as String? ?? '',
       addedAt: (map['addedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       order: map['order'] as int? ?? 0,
+      gid: map['gid'] as int? ?? 0,
       syncEmployees: map['syncEmployees'] as bool? ?? false,
     );
   }
@@ -47,8 +52,15 @@ class GoogleSheetModel {
       'addedBy': addedBy,
       'addedAt': Timestamp.fromDate(addedAt),
       'order': order,
+      'gid': gid,
       'syncEmployees': syncEmployees,
     };
+  }
+
+  /// Extract the tab id (gid) from a Sheets URL (?gid=N or #gid=N). Default 0.
+  static int extractGid(String url) {
+    final m = RegExp(r'[?&#]gid=(\d+)').firstMatch(url);
+    return m != null ? int.tryParse(m.group(1)!) ?? 0 : 0;
   }
 
   /// Extract sheet ID from various Google Sheets URL formats.

@@ -122,6 +122,8 @@ class RolePermissions {
 
       'audit_view',
 
+      'departments_manage',
+
       'googleSheets_view',
 
       'googleSheets_create',

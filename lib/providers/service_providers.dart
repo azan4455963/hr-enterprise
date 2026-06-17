@@ -9,6 +9,7 @@ import '../services/audit_service.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_service.dart';
 import '../services/company_settings_service.dart';
+import '../services/department_service.dart';
 import '../services/employee_service.dart';
 import '../services/employee_user_link_service.dart';
 import '../services/user_backend_service.dart';
@@ -79,3 +80,5 @@ final companySettingsServiceProvider =
     Provider<CompanySettingsService>((ref) => CompanySettingsService());
 final biometricServiceProvider =
     Provider<BiometricService>((ref) => BiometricService());
+final departmentServiceProvider =
+    Provider<DepartmentService>((ref) => DepartmentService());
