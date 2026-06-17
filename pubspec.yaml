@@ -53,6 +53,9 @@ dependencies:
   excel: ^4.0.6
   path_provider: ^2.1.5
 
+  # Spreadsheet-style editable data grid (in-app tables)
+  pluto_grid_plus: ^8.4.0
+
   # Push & biometric
   flutter_local_notifications: ^18.0.1
   local_auth: ^2.3.0

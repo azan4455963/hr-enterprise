@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:pluto_grid_plus/pluto_grid_plus.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_table_providers.dart';
 
-/// Spreadsheet-style editor for a custom table: add columns/rows, tap a cell to
-/// edit (with quick status presets), colour-coded. Save writes to Firestore.
+/// Excel-style editor (PlutoGrid): inline cell editing, keyboard navigation,
+/// bulk add rows, paste from a spreadsheet, and colour-coded status cells.
 class DataTableEditorScreen extends ConsumerStatefulWidget {
   const DataTableEditorScreen({super.key, required this.tableId});
   final String tableId;
@@ -18,33 +20,25 @@ class DataTableEditorScreen extends ConsumerStatefulWidget {
       _DataTableEditorScreenState();
 }
 
-const _statusPresets = [
-  'Present',
-  'Absent',
-  'Late coming',
-  'Casual Leave',
-  'Short Leave',
-  'Medical Leave',
-  '-',
-];
-const _cellWidth = 132.0;
-
 class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   List<String> _columns = [];
   List<List<String>> _rows = [];
   bool _loaded = false;
   bool _dirty = false;
   bool _saving = false;
+  int _structureKey = 0; // bump to rebuild the grid when columns/rows change
+
+  String _field(int i) => 'c$i';
 
   @override
   Widget build(BuildContext context) {
     final tableAsync = ref.watch(dataTableProvider(widget.tableId));
 
     return tableAsync.when(
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
-      error: (e, _) => Scaffold(appBar: AppBar(), body: Center(child: Text('$e'))),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) =>
+          Scaffold(appBar: AppBar(), body: Center(child: Text('$e'))),
       data: (table) {
         if (table == null) {
           return Scaffold(
@@ -52,7 +46,6 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
             body: const Center(child: Text('Table not found')),
           );
         }
-        // Load server data once (don't clobber in-progress edits).
         if (!_loaded) {
           _columns = [...table.columns];
           _rows = table.rows.map((r) => [...r]).toList();
@@ -92,43 +85,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           ),
           body: Column(
             children: [
-              // Toolbar
-              Container(
-                width: double.infinity,
-                color: AppColors.surface,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    GhostButton(
-                      label: 'Add Column',
-                      icon: Icons.view_column_outlined,
-                      onPressed: _addColumn,
-                    ),
-                    const SizedBox(width: 10),
-                    GhostButton(
-                      label: 'Add Row',
-                      icon: Icons.table_rows_outlined,
-                      onPressed: _columns.isEmpty ? () {} : _addRow,
-                    ),
-                    const Spacer(),
-                    Text('${_rows.length} rows · ${_columns.length} cols',
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.textMuted)),
-                  ],
-                ),
-              ),
+              _toolbar(),
               const Divider(height: 1, color: AppColors.cardBorder),
               Expanded(
                 child: _columns.isEmpty
-                    ? const Center(
-                        child: Text('Add a column to begin',
-                            style: TextStyle(color: AppColors.textMuted)))
-                    : SingleChildScrollView(
-                        scrollDirection: Axis.vertical,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: _buildGrid(),
-                        ),
+                    ? _emptyState()
+                    : Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: _grid(),
                       ),
               ),
             ],
@@ -138,43 +102,122 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     );
   }
 
-  Widget _buildGrid() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Row(
-          children: [
-            const SizedBox(width: 40), // row-delete column
-            for (var c = 0; c < _columns.length; c++)
-              _HeaderCell(
-                title: _columns[c],
-                onRename: () => _renameColumn(c),
-                onDelete: () => _deleteColumn(c),
-              ),
-          ],
-        ),
-        // Rows
-        for (var r = 0; r < _rows.length; r++)
-          Row(
-            children: [
-              SizedBox(
-                width: 40,
-                child: IconButton(
-                  icon: const Icon(Icons.remove_circle_outline,
-                      size: 18, color: AppColors.textFaint),
-                  tooltip: 'Delete row',
-                  onPressed: () => _deleteRow(r),
-                ),
-              ),
-              for (var c = 0; c < _columns.length; c++)
-                _Cell(
-                  value: c < _rows[r].length ? _rows[r][c] : '',
-                  onTap: () => _editCell(r, c),
-                ),
-            ],
+  Widget _toolbar() {
+    return Container(
+      width: double.infinity,
+      color: AppColors.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          GhostButton(
+            label: 'Add Column',
+            icon: Icons.view_column_outlined,
+            onPressed: _addColumn,
           ),
-      ],
+          GhostButton(
+            label: 'Add Row',
+            icon: Icons.table_rows_outlined,
+            onPressed: _columns.isEmpty ? () {} : () => _addRows(1),
+          ),
+          GhostButton(
+            label: 'Add 10 Rows',
+            icon: Icons.playlist_add_rounded,
+            onPressed: _columns.isEmpty ? () {} : () => _addRows(10),
+          ),
+          GhostButton(
+            label: 'Paste',
+            icon: Icons.content_paste_rounded,
+            onPressed: _pasteFromClipboard,
+          ),
+          const SizedBox(width: 4),
+          Text('${_rows.length} rows · ${_columns.length} cols',
+              style:
+                  const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.grid_on_rounded, size: 56, color: AppColors.textFaint),
+          const SizedBox(height: 10),
+          const Text('Empty table',
+              style: TextStyle(color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          const Text('Add columns, or paste data from Excel/Google Sheets',
+              style: TextStyle(fontSize: 12, color: AppColors.textFaint)),
+          const SizedBox(height: 14),
+          PrimaryButton(
+              label: 'Add Column', icon: Icons.add, onPressed: _addColumn),
+        ],
+      ),
+    );
+  }
+
+  Widget _grid() {
+    final columns = [
+      for (var i = 0; i < _columns.length; i++)
+        PlutoColumn(
+          title: _columns[i],
+          field: _field(i),
+          type: PlutoColumnType.text(),
+          width: 150,
+          enableContextMenu: false,
+          enableDropToResize: true,
+          renderer: _statusRenderer,
+        ),
+    ];
+    final rows = [
+      for (final r in _rows)
+        PlutoRow(cells: {
+          for (var i = 0; i < _columns.length; i++)
+            _field(i): PlutoCell(value: i < r.length ? r[i] : ''),
+        }),
+    ];
+
+    return PlutoGrid(
+      key: ValueKey('grid_$_structureKey'),
+      columns: columns,
+      rows: rows,
+      onChanged: (e) {
+        final ci = int.tryParse(e.column.field.substring(1)) ?? -1;
+        if (ci < 0 || e.rowIdx >= _rows.length) return;
+        while (_rows[e.rowIdx].length < _columns.length) {
+          _rows[e.rowIdx].add('');
+        }
+        _rows[e.rowIdx][ci] = e.value?.toString() ?? '';
+        if (!_dirty) setState(() => _dirty = true);
+      },
+      configuration: const PlutoGridConfiguration(
+        columnSize: PlutoGridColumnSizeConfig(
+          autoSizeMode: PlutoAutoSizeMode.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _statusRenderer(PlutoColumnRendererContext ctx) {
+    final v = ctx.cell.value?.toString() ?? '';
+    final sc = _statusColor(v);
+    if (sc == null) {
+      return Text(v, overflow: TextOverflow.ellipsis);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: sc.bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(v,
+          style: TextStyle(color: sc.fg, fontWeight: FontWeight.w600),
+          overflow: TextOverflow.ellipsis),
     );
   }
 
@@ -187,58 +230,62 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       for (final row in _rows) {
         row.add('');
       }
+      if (_rows.isEmpty) _rows.add(List<String>.filled(_columns.length, ''));
       _dirty = true;
+      _structureKey++;
     });
   }
 
-  void _addRow() {
+  void _addRows(int n) {
     setState(() {
-      _rows.add(List<String>.filled(_columns.length, ''));
-      _dirty = true;
-    });
-  }
-
-  Future<void> _renameColumn(int c) async {
-    final name = await _prompt('Rename column', initial: _columns[c]);
-    if (name == null || name.trim().isEmpty) return;
-    setState(() {
-      _columns[c] = name.trim();
-      _dirty = true;
-    });
-  }
-
-  void _deleteColumn(int c) {
-    setState(() {
-      _columns.removeAt(c);
-      for (final row in _rows) {
-        if (c < row.length) row.removeAt(c);
+      for (var i = 0; i < n; i++) {
+        _rows.add(List<String>.filled(_columns.length, ''));
       }
       _dirty = true;
+      _structureKey++;
     });
   }
 
-  void _deleteRow(int r) {
-    setState(() {
-      _rows.removeAt(r);
-      _dirty = true;
-    });
-  }
+  Future<void> _pasteFromClipboard() async {
+    final data = await Clipboard.getData('text/plain');
+    final text = data?.text;
+    if (text == null || text.trim().isEmpty) {
+      _snack('Clipboard is empty. Copy cells from Excel/Sheets first.');
+      return;
+    }
+    final lines = text
+        .replaceAll('\r\n', '\n')
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .toList();
+    if (lines.isEmpty) return;
 
-  Future<void> _editCell(int r, int c) async {
-    final current = c < _rows[r].length ? _rows[r][c] : '';
-    final value = await showDialog<String>(
-      context: context,
-      builder: (ctx) => _CellEditDialog(initial: current),
-    );
-    if (value == null) return;
+    final parsed = lines.map((l) => l.split('\t')).toList();
     setState(() {
-      // pad row if needed
-      while (_rows[r].length < _columns.length) {
-        _rows[r].add('');
+      if (_columns.isEmpty) {
+        // First pasted line = headers, rest = rows.
+        _columns = parsed.first.map((c) => c.trim()).toList();
+        _rows = parsed.skip(1).map((r) {
+          final row = List<String>.filled(_columns.length, '');
+          for (var i = 0; i < r.length && i < _columns.length; i++) {
+            row[i] = r[i].trim();
+          }
+          return row;
+        }).toList();
+      } else {
+        // Append all pasted lines as rows, mapped to existing columns.
+        for (final r in parsed) {
+          final row = List<String>.filled(_columns.length, '');
+          for (var i = 0; i < r.length && i < _columns.length; i++) {
+            row[i] = r[i].trim();
+          }
+          _rows.add(row);
+        }
       }
-      _rows[r][c] = value;
       _dirty = true;
+      _structureKey++;
     });
+    _snack('Pasted ${parsed.length} line(s).');
   }
 
   Future<void> _save() async {
@@ -253,13 +300,15 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           );
       if (mounted) setState(() => _dirty = false);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Save failed: $e')));
-      }
+      _snack('Save failed: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _snack(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
   Future<String?> _prompt(String title, {String initial = '', String? hint}) {
@@ -274,6 +323,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           controller: c,
           autofocus: true,
           decoration: InputDecoration(hintText: hint),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(
@@ -285,7 +335,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 }
 
-/// Colour for a status-like cell value.
+/// Colour for a status-like cell value (attendance etc.).
 ({Color bg, Color fg})? _statusColor(String raw) {
   final v = raw.trim().toLowerCase();
   if (v.isEmpty || v == '-') return null;
@@ -302,144 +352,4 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     return (bg: AppColors.pillGreenBg, fg: AppColors.pillGreenFg);
   }
   return null;
-}
-
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.title,
-    required this.onRename,
-    required this.onDelete,
-  });
-  final String title;
-  final VoidCallback onRename;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: _cellWidth,
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: AppColors.brandNavy.withValues(alpha: 0.06),
-        border: Border.all(color: AppColors.cardBorder, width: 0.5),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(title,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12.5,
-                    color: AppColors.heading),
-                overflow: TextOverflow.ellipsis),
-          ),
-          PopupMenuButton<String>(
-            padding: EdgeInsets.zero,
-            iconSize: 16,
-            onSelected: (v) {
-              if (v == 'rename') onRename();
-              if (v == 'delete') onDelete();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'rename', child: Text('Rename column')),
-              PopupMenuItem(value: 'delete', child: Text('Delete column')),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Cell extends StatelessWidget {
-  const _Cell({required this.value, required this.onTap});
-  final String value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final sc = _statusColor(value);
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        width: _cellWidth,
-        height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        alignment: Alignment.centerLeft,
-        decoration: BoxDecoration(
-          color: sc?.bg ?? AppColors.surface,
-          border: Border.all(color: AppColors.cardBorder, width: 0.5),
-        ),
-        child: Text(
-          value,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: sc != null ? FontWeight.w600 : FontWeight.w400,
-            color: sc?.fg ?? AppColors.textBody,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    );
-  }
-}
-
-class _CellEditDialog extends StatefulWidget {
-  const _CellEditDialog({required this.initial});
-  final String initial;
-
-  @override
-  State<_CellEditDialog> createState() => _CellEditDialogState();
-}
-
-class _CellEditDialogState extends State<_CellEditDialog> {
-  late final TextEditingController _c = TextEditingController(text: widget.initial);
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: const Text('Edit cell',
-          style: TextStyle(fontWeight: FontWeight.w700)),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _c,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Value'),
-              onSubmitted: (v) => Navigator.pop(context, v),
-            ),
-            const SizedBox(height: 12),
-            const Text('Quick status',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final s in _statusPresets)
-                  ActionChip(
-                    label: Text(s, style: const TextStyle(fontSize: 12)),
-                    onPressed: () => setState(() => _c.text = s),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel')),
-        PrimaryButton(
-            label: 'Save', onPressed: () => Navigator.pop(context, _c.text)),
-      ],
-    );
-  }
 }
