@@ -196,10 +196,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider).valueOrNull;
     final canViewSalary = user?.canViewSalary() ?? false;
-    // Director can only hire into their own department → lock the field.
-    final lockDepartment = user != null &&
-        user.role == 'manager' &&
-        (user.departmentName?.isNotEmpty ?? false);
+    // A director can only hire into their own department(s).
+    final managedDepts =
+        (user != null && user.role == 'manager') ? user.departments : const <String>[];
+    final lockDepartment = managedDepts.length == 1; // single dept → locked
+    final multiDept = managedDepts.length > 1; // many → dropdown
 
     return Scaffold(
       appBar: AppBar(
@@ -279,17 +280,35 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     decoration: const InputDecoration(labelText: 'Position'),
                     validator: (v) => Validators.required(v, 'Position'),
                   ),
-                  TextFormField(
-                    controller: _department,
-                    readOnly: lockDepartment,
-                    decoration: InputDecoration(
-                      labelText: 'Department',
-                      helperText: lockDepartment
-                          ? 'Locked to your department'
-                          : null,
+                  if (multiDept)
+                    DropdownButtonFormField<String>(
+                      initialValue: managedDepts.contains(_department.text)
+                          ? _department.text
+                          : managedDepts.first,
+                      decoration: const InputDecoration(
+                        labelText: 'Department',
+                        helperText: 'Choose one of your departments',
+                      ),
+                      items: [
+                        for (final d in managedDepts)
+                          DropdownMenuItem(value: d, child: Text(d)),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _department.text = v);
+                      },
+                    )
+                  else
+                    TextFormField(
+                      controller: _department,
+                      readOnly: lockDepartment,
+                      decoration: InputDecoration(
+                        labelText: 'Department',
+                        helperText: lockDepartment
+                            ? 'Locked to your department'
+                            : null,
+                      ),
+                      validator: (v) => Validators.required(v, 'Department'),
                     ),
-                    validator: (v) => Validators.required(v, 'Department'),
-                  ),
                   if (canViewSalary)
                     TextFormField(
                       controller: _salary,
