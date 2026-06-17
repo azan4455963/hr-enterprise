@@ -8,6 +8,7 @@ class RoutePermissions {
     '/departments': 'departments_manage',
     '/users': 'users_manage',
     '/activity': 'audit_view',
+    '/tables': 'tables_manage',
     '/my-department': 'employees_view',
     '/attendance': 'attendance_view',
     '/leave': 'leave_view',

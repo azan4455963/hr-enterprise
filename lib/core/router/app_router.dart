@@ -31,6 +31,8 @@ import '../../features/reports/screens/reports_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/unauthorized_screen.dart';
+import '../../features/tables/screens/data_table_editor_screen.dart';
+import '../../features/tables/screens/data_tables_screen.dart';
 import 'router_refresh.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -89,6 +91,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/activity',
             builder: (context, state) => const ActivityLogScreen(),
+          ),
+          GoRoute(
+            path: '/tables',
+            builder: (context, state) => const DataTablesScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => DataTableEditorScreen(
+                  tableId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: '/my-department',

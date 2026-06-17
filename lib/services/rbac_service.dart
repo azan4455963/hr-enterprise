@@ -47,6 +47,7 @@ class RbacService {
     'departments': can(user, 'departments_manage'),
     'users': RolePermissions.isSuperAdmin(user.role),
     'activity': RolePermissions.isSuperAdmin(user.role),
+    'tables': RolePermissions.isSuperAdmin(user.role),
     'my-department': user.role == RolePermissions.manager,
     'attendance': can(user, 'attendance_view'),
     'leave': can(user, 'leave_view'),

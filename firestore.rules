@@ -164,5 +164,9 @@ service cloud.firestore {
         hasPerm('googleSheets_delete')
       );
     }
+
+    match /data_tables/{id} {
+      allow read, write: if isAdminRole();
+    }
   }
 }
