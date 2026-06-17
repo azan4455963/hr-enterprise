@@ -153,7 +153,11 @@ class DepartmentsScreen extends ConsumerWidget {
   ) async {
     await showDialog(
       context: context,
-      builder: (ctx) => _DirectorsDialog(departmentId: dept.id, adminId: adminId),
+      builder: (ctx) => _DirectorsDialog(
+        departmentId: dept.id,
+        departmentName: dept.name,
+        adminId: adminId,
+      ),
     );
   }
 
@@ -271,8 +275,13 @@ class _DeptCard extends StatelessWidget {
 
 /// Admin dialog: see current directors of a department and add/remove them.
 class _DirectorsDialog extends ConsumerWidget {
-  const _DirectorsDialog({required this.departmentId, required this.adminId});
+  const _DirectorsDialog({
+    required this.departmentId,
+    required this.departmentName,
+    required this.adminId,
+  });
   final String departmentId;
+  final String departmentName;
   final String adminId;
 
   @override
@@ -292,15 +301,18 @@ class _DirectorsDialog extends ConsumerWidget {
               height: 120, child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text('$e'),
           data: (users) {
-            // Directors of THIS department, and everyone else (candidates).
+            // Directors of THIS department (matched by department name), and
+            // everyone else (candidates).
             final directors = users
                 .where((u) =>
-                    u.role == 'manager' && u.departmentId == departmentId)
+                    u.role == 'manager' &&
+                    u.departments.contains(departmentName))
                 .toList();
             final candidates = users
                 .where((u) =>
                     u.role != 'super_admin' &&
-                    !(u.role == 'manager' && u.departmentId == departmentId))
+                    !(u.role == 'manager' &&
+                        u.departments.contains(departmentName)))
                 .toList();
 
             return Column(
