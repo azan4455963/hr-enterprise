@@ -10,6 +10,7 @@ class UserModel extends Equatable {
     this.displayName,
     this.photoUrl,
     this.departmentId,
+    this.departmentName,
     this.employeeId,
     this.companyId = 'default_company',
     this.permissions = const [],
@@ -24,6 +25,9 @@ class UserModel extends Equatable {
   final String? displayName;
   final String? photoUrl;
   final String? departmentId;
+
+  /// For a Director (manager): the department they manage (by name).
+  final String? departmentName;
   final String? employeeId;
   final String companyId;
   final List<String> permissions;
@@ -50,6 +54,7 @@ class UserModel extends Equatable {
       displayName: map['displayName'] as String?,
       photoUrl: map['photoUrl'] as String?,
       departmentId: map['departmentId'] as String?,
+      departmentName: map['departmentName'] as String?,
       employeeId: map['employeeId'] as String?,
       companyId: map['companyId'] as String? ?? 'default_company',
       permissions: List<String>.from(map['permissions'] as List? ?? []),
@@ -65,6 +70,7 @@ class UserModel extends Equatable {
         'displayName': displayName,
         'photoUrl': photoUrl,
         'departmentId': departmentId,
+        'departmentName': departmentName,
         'employeeId': employeeId,
         'companyId': companyId,
         'permissions': permissions,

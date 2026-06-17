@@ -53,11 +53,26 @@ service cloud.firestore {
       allow delete: if isAdminRole();
     }
 
+    function myDepartment() {
+      return userDoc().departmentName;
+    }
+
+    // A director (manager) is limited to their own department; admin sees all.
+    function inMyDept(dept) {
+      return isAdminRole() || role() != 'manager' || dept == myDepartment();
+    }
+
     match /employees/{employeeId} {
-      allow read: if isSignedIn() && hasPerm('employees_view');
-      allow create, update, delete: if isSignedIn() && (
-        hasPerm('employees_edit') || hasPerm('employees_create') || hasPerm('employees_delete')
-      );
+      allow read: if isSignedIn() && hasPerm('employees_view') &&
+        inMyDept(resource.data.departmentName);
+      allow create: if isSignedIn() && hasPerm('employees_create') &&
+        inMyDept(request.resource.data.departmentName);
+      allow update: if isSignedIn() &&
+        (hasPerm('employees_edit') || hasPerm('employees_delete')) &&
+        inMyDept(resource.data.departmentName) &&
+        inMyDept(request.resource.data.departmentName);
+      allow delete: if isSignedIn() && hasPerm('employees_delete') &&
+        inMyDept(resource.data.departmentName);
     }
 
     function hasLinkedEmployee() {

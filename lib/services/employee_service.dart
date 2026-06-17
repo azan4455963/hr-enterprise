@@ -33,7 +33,24 @@ class EmployeeService {
 
   Stream<List<EmployeeModel>> watchEmployees({
     String? departmentId,
+    String? departmentName,
   }) {
+    // When scoped by department name (a director), query by that field and
+    // sort client-side — avoids a composite index requirement.
+    if (departmentName != null) {
+      return _collection
+          .where('departmentName', isEqualTo: departmentName)
+          .snapshots()
+          .map((snap) {
+        final list = snap.docs
+            .map((d) => EmployeeModel.fromMap(d.id, d.data()))
+            .toList()
+          ..sort((a, b) => (b.createdAt ?? DateTime(0))
+              .compareTo(a.createdAt ?? DateTime(0)));
+        return list;
+      });
+    }
+
     Query<Map<String, dynamic>> query =
         _collection.orderBy('createdAt', descending: true);
     if (departmentId != null) {

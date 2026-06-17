@@ -32,22 +32,34 @@ final usersProvider = StreamProvider<List<UserModel>>((ref) {
 final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   final service = ref.watch(employeeServiceProvider);
-  final stream = service.watchEmployees();
-  return stream.map((list) {
-    if (user == null) return list;
-    if (RolePermissions.includeInactiveRoles &&
-        user.role == RolePermissions.manager &&
-        user.departmentId != null) {
-      return list
-          .where((e) => e.departmentId == user.departmentId)
-          .toList();
-    }
-    return list;
-  });
+
+  // Director (manager): scoped to their own department only.
+  if (user != null &&
+      user.role == RolePermissions.manager &&
+      (user.departmentName?.isNotEmpty ?? false)) {
+    return service.watchEmployees(departmentName: user.departmentName);
+  }
+
+  // Admin / others: everyone.
+  return service.watchEmployees();
+});
+
+/// Employee ids in the current user's scope (a director's department), or null
+/// when there is no scoping (admin sees everything).
+final _scopedEmployeeIdsProvider = Provider<Set<String>?>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null || user.role != RolePermissions.manager) return null;
+  final emps = ref.watch(employeesProvider).valueOrNull ?? const [];
+  return emps.map((e) => e.id).toSet();
 });
 
 final todayAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {
-  return ref.watch(attendanceServiceProvider).watchTodayAttendance();
+  final ids = ref.watch(_scopedEmployeeIdsProvider);
+  return ref.watch(attendanceServiceProvider).watchTodayAttendance().map(
+        (list) => ids == null
+            ? list
+            : list.where((a) => ids.contains(a.employeeId)).toList(),
+      );
 });
 
 /// Look up a single employee by id (whole profile).
@@ -77,7 +89,12 @@ final employeePayrollHistoryProvider =
 });
 
 final recentAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {
-  return ref.watch(attendanceServiceProvider).watchRecent(days: 30);
+  final ids = ref.watch(_scopedEmployeeIdsProvider);
+  return ref.watch(attendanceServiceProvider).watchRecent(days: 30).map(
+        (list) => ids == null
+            ? list
+            : list.where((a) => ids.contains(a.employeeId)).toList(),
+      );
 });
 
 final attendanceStatsProvider =
@@ -97,11 +114,21 @@ final activeQrSessionProvider = StreamProvider<AttendanceQrSessionModel?>((ref) 
 });
 
 final leaveRequestsProvider = StreamProvider<List<LeaveRequestModel>>((ref) {
-  return ref.watch(leaveServiceProvider).watchAll();
+  final ids = ref.watch(_scopedEmployeeIdsProvider);
+  return ref.watch(leaveServiceProvider).watchAll().map(
+        (list) => ids == null
+            ? list
+            : list.where((l) => ids.contains(l.employeeId)).toList(),
+      );
 });
 
 final pendingLeaveProvider = StreamProvider<List<LeaveRequestModel>>((ref) {
-  return ref.watch(leaveServiceProvider).watchPending();
+  final ids = ref.watch(_scopedEmployeeIdsProvider);
+  return ref.watch(leaveServiceProvider).watchPending().map(
+        (list) => ids == null
+            ? list
+            : list.where((l) => ids.contains(l.employeeId)).toList(),
+      );
 });
 
 final payrollProvider = StreamProvider<List<PayrollModel>>((ref) {

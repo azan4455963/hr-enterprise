@@ -40,7 +40,17 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.employeeId != null) _loadEmployee();
+    if (widget.employeeId != null) {
+      _loadEmployee();
+    } else {
+      // New hire by a Director → force their own department.
+      final user = ref.read(currentUserProvider).valueOrNull;
+      if (user != null &&
+          user.role == 'manager' &&
+          (user.departmentName?.isNotEmpty ?? false)) {
+        _department.text = user.departmentName!;
+      }
+    }
   }
 
   @override
@@ -184,8 +194,12 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canViewSalary =
-        ref.watch(currentUserProvider).valueOrNull?.canViewSalary() ?? false;
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final canViewSalary = user?.canViewSalary() ?? false;
+    // Director can only hire into their own department → lock the field.
+    final lockDepartment = user != null &&
+        user.role == 'manager' &&
+        (user.departmentName?.isNotEmpty ?? false);
 
     return Scaffold(
       appBar: AppBar(
@@ -267,7 +281,13 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                   ),
                   TextFormField(
                     controller: _department,
-                    decoration: const InputDecoration(labelText: 'Department'),
+                    readOnly: lockDepartment,
+                    decoration: InputDecoration(
+                      labelText: 'Department',
+                      helperText: lockDepartment
+                          ? 'Locked to your department'
+                          : null,
+                    ),
                     validator: (v) => Validators.required(v, 'Department'),
                   ),
                   if (canViewSalary)

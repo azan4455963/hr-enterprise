@@ -80,9 +80,13 @@ class DepartmentService {
     required String directorUid,
     required String adminId,
   }) async {
+    // Capture the department name so the director can be scoped to it.
+    final snap = await _collection.doc(departmentId).get();
+    final deptName = (snap.data()?['name'] as String?)?.trim() ?? '';
     await _users.updateUser(directorUid, {
       'role': RolePermissions.manager,
       'departmentId': departmentId,
+      'departmentName': deptName,
       'permissions': <String>[], // use role defaults
     });
     await _collection.doc(departmentId).update({
@@ -106,6 +110,7 @@ class DepartmentService {
     await _users.updateUser(directorUid, {
       'role': RolePermissions.employee,
       'departmentId': null,
+      'departmentName': null,
       'permissions': <String>[],
     });
     await _collection.doc(departmentId).update({
