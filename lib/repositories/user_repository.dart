@@ -29,6 +29,11 @@ class UserRepository {
     });
   }
 
+  Stream<List<UserModel>> watchAll() {
+    return _collection.snapshots().map((snap) =>
+        snap.docs.map((d) => UserModel.fromMap(d.id, d.data())).toList());
+  }
+
   Future<UserModel?> findByEmail(String email) async {
     final snap = await _collection
         .where('email', isEqualTo: email.trim().toLowerCase())

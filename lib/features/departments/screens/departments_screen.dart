@@ -72,6 +72,8 @@ class DepartmentsScreen extends ConsumerWidget {
                           _showAddEdit(context, ref, user?.id ?? '', dept: d),
                       onDelete: () =>
                           _confirmDelete(context, ref, d, user?.id ?? ''),
+                      onDirectors: () =>
+                          _showDirectors(context, ref, d, user?.id ?? ''),
                     ),
                 ],
               );
@@ -143,6 +145,18 @@ class DepartmentsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _showDirectors(
+    BuildContext context,
+    WidgetRef ref,
+    DepartmentModel dept,
+    String adminId,
+  ) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => _DirectorsDialog(departmentId: dept.id, adminId: adminId),
+    );
+  }
+
   Future<void> _confirmDelete(
     BuildContext context,
     WidgetRef ref,
@@ -186,11 +200,13 @@ class _DeptCard extends StatelessWidget {
     required this.employeeCount,
     required this.onEdit,
     required this.onDelete,
+    required this.onDirectors,
   });
   final DepartmentModel dept;
   final int employeeCount;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onDirectors;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +247,12 @@ class _DeptCard extends StatelessWidget {
               ),
             ),
             IconButton(
+              icon: const Icon(Icons.manage_accounts_outlined,
+                  color: AppColors.brandNavy),
+              tooltip: 'Directors',
+              onPressed: onDirectors,
+            ),
+            IconButton(
               icon: const Icon(Icons.edit_outlined, color: AppColors.brandNavy),
               tooltip: 'Rename',
               onPressed: onEdit,
@@ -243,6 +265,124 @@ class _DeptCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Admin dialog: see current directors of a department and add/remove them.
+class _DirectorsDialog extends ConsumerWidget {
+  const _DirectorsDialog({required this.departmentId, required this.adminId});
+  final String departmentId;
+  final String adminId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final usersAsync = ref.watch(usersProvider);
+    final service = ref.read(departmentServiceProvider);
+
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Department Directors',
+          style: TextStyle(fontWeight: FontWeight.w700)),
+      content: SizedBox(
+        width: 440,
+        child: usersAsync.when(
+          loading: () => const SizedBox(
+              height: 120, child: Center(child: CircularProgressIndicator())),
+          error: (e, _) => Text('$e'),
+          data: (users) {
+            // Directors of THIS department, and everyone else (candidates).
+            final directors = users
+                .where((u) =>
+                    u.role == 'manager' && u.departmentId == departmentId)
+                .toList();
+            final candidates = users
+                .where((u) =>
+                    u.role != 'super_admin' &&
+                    !(u.role == 'manager' && u.departmentId == departmentId))
+                .toList();
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Current directors',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textMuted)),
+                const SizedBox(height: 6),
+                if (directors.isEmpty)
+                  const Text('None yet',
+                      style:
+                          TextStyle(fontSize: 13, color: AppColors.textFaint))
+                else
+                  ...directors.map((u) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        leading: const Icon(Icons.verified_user,
+                            color: AppColors.pillGreenFg, size: 20),
+                        title: Text(u.displayName ?? u.email,
+                            style: const TextStyle(fontSize: 13)),
+                        subtitle: Text(u.email,
+                            style: const TextStyle(fontSize: 11)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.remove_circle_outline,
+                              color: AppColors.error, size: 20),
+                          tooltip: 'Remove',
+                          onPressed: () => service.removeDirector(departmentId,
+                              directorUid: u.id, adminId: adminId),
+                        ),
+                      )),
+                const Divider(height: 20),
+                const Text('Assign a new director',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textMuted)),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 200,
+                  child: candidates.isEmpty
+                      ? const Center(
+                          child: Text('No other users',
+                              style: TextStyle(color: AppColors.textFaint)))
+                      : ListView(
+                          children: [
+                            for (final u in candidates)
+                              ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                dense: true,
+                                leading: InitialAvatar(
+                                    name: u.displayName ?? u.email, size: 30),
+                                title: Text(u.displayName ?? u.email,
+                                    style: const TextStyle(fontSize: 13)),
+                                subtitle: Text(
+                                    '${u.email} · ${u.role}',
+                                    style: const TextStyle(fontSize: 11)),
+                                trailing: TextButton(
+                                  onPressed: () => service.assignDirector(
+                                      departmentId,
+                                      directorUid: u.id,
+                                      adminId: adminId),
+                                  child: const Text('Make director'),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
     );
   }
 }

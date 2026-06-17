@@ -11,6 +11,7 @@ import '../models/leave_model.dart';
 import '../models/notification_model.dart';
 import '../models/onboarding_model.dart';
 import '../models/payroll_model.dart';
+import '../models/user_model.dart';
 import '../core/constants/permissions.dart';
 import 'auth_provider.dart';
 import 'service_providers.dart';
@@ -21,6 +22,11 @@ final companySettingsProvider = StreamProvider<CompanySettingsModel>((ref) {
 
 final departmentsProvider = StreamProvider<List<DepartmentModel>>((ref) {
   return ref.watch(departmentServiceProvider).watchDepartments();
+});
+
+/// All users (for admin to pick directors).
+final usersProvider = StreamProvider<List<UserModel>>((ref) {
+  return ref.watch(userRepositoryProvider).watchAll();
 });
 
 final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {

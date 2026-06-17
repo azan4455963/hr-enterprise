@@ -80,5 +80,6 @@ final companySettingsServiceProvider =
     Provider<CompanySettingsService>((ref) => CompanySettingsService());
 final biometricServiceProvider =
     Provider<BiometricService>((ref) => BiometricService());
-final departmentServiceProvider =
-    Provider<DepartmentService>((ref) => DepartmentService());
+final departmentServiceProvider = Provider<DepartmentService>((ref) {
+  return DepartmentService(userRepository: ref.watch(userRepositoryProvider));
+});

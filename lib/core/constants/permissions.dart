@@ -48,9 +48,10 @@ class RolePermissions {
 
   static const bool includeInactiveRoles = false;
 
-  static const Set<String> enabledRoles = {superAdmin, employee};
+  /// `manager` is the department Director role (department-scoped).
+  static const Set<String> enabledRoles = {superAdmin, employee, manager};
 
-  static const Set<String> inactiveRoles = {admin, hrManager, manager};
+  static const Set<String> inactiveRoles = {admin, hrManager};
 
   static bool isRoleEnabled(String role) =>
       includeInactiveRoles || enabledRoles.contains(role);
@@ -75,6 +76,32 @@ class RolePermissions {
       'leave_view',
 
       'leave_create',
+
+      'notifications_view',
+    ],
+
+    // Department Director — scoped to their own department (enforced in code
+    // + Firestore rules). Can run their department: hire, attendance, leave.
+    manager: [
+      'dashboard_view',
+
+      'employees_view',
+
+      'employees_create',
+
+      'employees_edit',
+
+      'attendance_view',
+
+      'attendance_edit',
+
+      'leave_view',
+
+      'leave_approve',
+
+      'reports_view',
+
+      'reports_export',
 
       'notifications_view',
     ],
@@ -163,24 +190,6 @@ class RolePermissions {
       'notifications_view',
 
       'googleSheets_view',
-    ],
-
-    manager: [
-      'dashboard_view',
-
-      'employees_view',
-
-      'attendance_view',
-
-      'attendance_edit',
-
-      'leave_view',
-
-      'leave_approve',
-
-      'reports_view',
-
-      'reports_export',
     ],
   };
 
