@@ -91,7 +91,7 @@ class AttendanceService {
         'method': methodName,
         'attendanceMethod': methodName,
         'deviceId': deviceId,
-        if (employeeName != null) 'employeeName': employeeName,
+        'employeeName': ?employeeName,
       });
     } else {
       await _attendance.createRecord(
@@ -137,7 +137,7 @@ class AttendanceService {
       'timestamp': Timestamp.fromDate(now),
       'method': methodName,
       'attendanceMethod': methodName,
-      if (employeeName != null) 'employeeName': employeeName,
+      'employeeName': ?employeeName,
     });
 
     await _notifications.send(

@@ -39,6 +39,32 @@ final todayAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {
   return ref.watch(attendanceServiceProvider).watchTodayAttendance();
 });
 
+/// Look up a single employee by id (whole profile).
+final employeeByIdProvider =
+    FutureProvider.family<EmployeeModel?, String>((ref, id) {
+  return ref.watch(employeeServiceProvider).getEmployee(id);
+});
+
+/// Full attendance history for one employee (most recent first).
+final employeeAttendanceHistoryProvider =
+    StreamProvider.family<List<AttendanceModel>, String>((ref, employeeId) {
+  return ref.watch(attendanceServiceProvider).watchEmployeeHistory(employeeId);
+});
+
+/// Full leave history for one employee.
+final employeeLeaveHistoryProvider =
+    StreamProvider.family<List<LeaveRequestModel>, String>((ref, employeeId) {
+  return ref.watch(leaveServiceProvider).watchByEmployee(employeeId);
+});
+
+/// Full payroll history for one employee (filtered client-side).
+final employeePayrollHistoryProvider =
+    StreamProvider.family<List<PayrollModel>, String>((ref, employeeId) {
+  return ref.watch(payrollServiceProvider).watchPayroll().map(
+        (list) => list.where((p) => p.employeeId == employeeId).toList(),
+      );
+});
+
 final recentAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {
   return ref.watch(attendanceServiceProvider).watchRecent(days: 30);
 });
@@ -124,7 +150,7 @@ final unreadNotificationsCountProvider = Provider<int>((ref) {
   return ref.watch(notificationsProvider).when(
         data: (list) => list.where((n) => !n.isRead).length,
         loading: () => 0,
-        error: (_, __) => 0,
+        error: (_, _) => 0,
       );
 });
 
@@ -133,7 +159,7 @@ final onboardingPendingCountProvider = Provider<int>((ref) {
         data: (list) =>
             list.where((s) => s.status == OnboardingSubmissionStatus.submitted).length,
         loading: () => 0,
-        error: (_, __) => 0,
+        error: (_, _) => 0,
       );
 });
 

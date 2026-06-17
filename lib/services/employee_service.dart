@@ -93,6 +93,106 @@ class EmployeeService {
     );
   }
 
+  /// Bulk-import employees parsed from a Google Sheet.
+  ///
+  /// Rows whose email already exists are skipped (no duplicates). Rows without
+  /// an email are matched by full name instead. Returns how many were created
+  /// and how many skipped as duplicates.
+  Future<({int created, int duplicates})> importEmployees(
+    List<EmployeeModel> employees, {
+    required String userId,
+  }) async {
+    final existing = await _collection.get();
+    final existingEmails = <String>{};
+    final existingNames = <String>{};
+    for (final doc in existing.docs) {
+      final e = EmployeeModel.fromMap(doc.id, doc.data());
+      if (e.email.trim().isNotEmpty) {
+        existingEmails.add(e.email.trim().toLowerCase());
+      }
+      existingNames.add(e.fullName.trim().toLowerCase());
+    }
+
+    var created = 0;
+    var duplicates = 0;
+
+    for (final emp in employees) {
+      final email = emp.email.trim().toLowerCase();
+      final name = emp.fullName.trim().toLowerCase();
+
+      final isDuplicate = email.isNotEmpty
+          ? existingEmails.contains(email)
+          : existingNames.contains(name);
+      if (isDuplicate) {
+        duplicates++;
+        continue;
+      }
+
+      await createEmployee(emp, userId: userId);
+      created++;
+      if (email.isNotEmpty) existingEmails.add(email);
+      existingNames.add(name);
+    }
+
+    return (created: created, duplicates: duplicates);
+  }
+
+  /// Upsert employees parsed from a sheet (for auto-sync).
+  ///
+  /// New rows are created; existing employees (matched by email, else by full
+  /// name) are updated only when a synced field actually changed. Returns the
+  /// number created and updated.
+  Future<({int created, int updated})> upsertEmployees(
+    List<EmployeeModel> employees, {
+    required String userId,
+  }) async {
+    final existing = await _collection.get();
+    final byEmail = <String, EmployeeModel>{};
+    final byName = <String, EmployeeModel>{};
+    for (final doc in existing.docs) {
+      final e = EmployeeModel.fromMap(doc.id, doc.data());
+      if (e.email.trim().isNotEmpty) {
+        byEmail[e.email.trim().toLowerCase()] = e;
+      }
+      byName[e.fullName.trim().toLowerCase()] = e;
+    }
+
+    var created = 0;
+    var updated = 0;
+
+    for (final emp in employees) {
+      final email = emp.email.trim().toLowerCase();
+      final name = emp.fullName.trim().toLowerCase();
+      final match = email.isNotEmpty ? byEmail[email] : byName[name];
+
+      if (match == null) {
+        await createEmployee(emp, userId: userId);
+        created++;
+        continue;
+      }
+
+      // Update only if a synced field changed.
+      final changed = match.departmentName != emp.departmentName ||
+          match.position != emp.position ||
+          match.salary != emp.salary ||
+          match.phone != emp.phone ||
+          match.cnic != emp.cnic;
+      if (!changed) continue;
+
+      await _employees.update(match.id, {
+        'departmentName': emp.departmentName,
+        'position': emp.position,
+        'salary': emp.salary,
+        'phone': emp.phone,
+        'cnic': emp.cnic,
+        'updatedAt': DateTime.now(),
+      });
+      updated++;
+    }
+
+    return (created: created, updated: updated);
+  }
+
   Future<void> deleteEmployee(String id, {required String userId}) async {
     await _collection.doc(id).delete();
     await _audit.log(

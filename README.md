@@ -18,6 +18,17 @@ Cross-platform HR platform (Android, iOS, Web, Windows, macOS) with real-time Fi
 | **Notifications** | FCM + local notifications + in-app Firestore feed |
 | **Settings** | Dark/light theme, company hours, biometric toggle |
 
+## UI / Design system
+
+The authenticated app uses a **light "HR Command" design** (navy + blue accent on a light canvas). The login/register screens keep their dedicated photo backdrop.
+
+- **Palette & tokens** — [`lib/core/theme/app_colors.dart`](lib/core/theme/app_colors.dart): navy `#1E3A8A`, blue `#2563EB`, light canvas, white cards, status colors.
+- **Reusable UI kit** — [`lib/core/widgets/ui_kit.dart`](lib/core/widgets/ui_kit.dart): `AppCard`, `StatCard`, `StatusPill`, `PageHeading`, `SectionTitle`, `PrimaryButton`, `GhostButton`, `InitialAvatar`, `StatCardRow`. Build new screens from these so the look stays consistent.
+- **App shell** — [`lib/features/shell/app_shell.dart`](lib/features/shell/app_shell.dart): light sidebar (brand, nav, Add Employee CTA, Settings/Logout footer) + a shared **"HR Command"** top bar (search, notifications, settings, profile) rendered on every screen.
+- **Redesigned screens** — Dashboard, Employees, Attendance & Leaves, Onboarding. Payroll / Reports / Settings still use the legacy style.
+
+> Login backdrop lives in [`lib/core/widgets/login_backdrop.dart`](lib/core/widgets/login_backdrop.dart) (photo + overlay); other screens sit on the light canvas via the shell.
+
 ## Setup (required)
 
 ### 1. Firebase project

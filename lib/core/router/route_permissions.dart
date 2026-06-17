@@ -3,6 +3,8 @@ class RoutePermissions {
   static const Map<String, String> routeToPermission = {
     '/dashboard': 'dashboard_view',
     '/employees': 'employees_view',
+    '/employee-overview': 'employees_view',
+    '/employee-search': 'employees_view',
     '/attendance': 'attendance_view',
     '/leave': 'leave_view',
     '/payroll': 'payroll_view',
@@ -10,6 +12,8 @@ class RoutePermissions {
     '/onboarding': 'onboarding_view',
     '/notifications': 'notifications_view',
     '/settings': 'settings_view',
+    '/google-sheets': 'googleSheets_view',
+    '/google-drive': 'googleSheets_view',
   };
 
   static String? permissionForPath(String path) {

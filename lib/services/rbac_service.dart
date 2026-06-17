@@ -11,7 +11,11 @@ class RbacService {
     return user.hasPermission(permission);
   }
 
-  bool canAccessModule(UserModel? user, AppModule module, PermissionAction action) {
+  bool canAccessModule(
+    UserModel? user,
+    AppModule module,
+    PermissionAction action,
+  ) {
     if (user == null) return false;
     return user.hasPermission(PermissionKeys.key(module, action));
   }
@@ -37,15 +41,18 @@ class RbacService {
   }
 
   Map<String, bool> getModuleAccess(UserModel user) => {
-        'dashboard': can(user, 'dashboard_view'),
-        'employees': can(user, 'employees_view'),
-        'attendance': can(user, 'attendance_view'),
-        'leave': can(user, 'leave_view'),
-        'payroll': can(user, 'payroll_view'),
-        'reports': can(user, 'reports_view'),
-        'onboarding': can(user, 'onboarding_view'),
-        'notifications': can(user, 'notifications_view'),
-        'settings': can(user, 'settings_view'),
-        'audit': can(user, 'audit_view'),
-      };
+    'dashboard': can(user, 'dashboard_view'),
+    'employees': can(user, 'employees_view'),
+    'employee-search': can(user, 'employees_view'),
+    'attendance': can(user, 'attendance_view'),
+    'leave': can(user, 'leave_view'),
+    'payroll': can(user, 'payroll_view'),
+    'reports': can(user, 'reports_view'),
+    'onboarding': can(user, 'onboarding_view'),
+    'notifications': can(user, 'notifications_view'),
+    'settings': can(user, 'settings_view'),
+    'audit': can(user, 'audit_view'),
+    'google-sheets': can(user, 'googleSheets_view'),
+    'google-drive': can(user, 'googleSheets_view'),
+  };
 }

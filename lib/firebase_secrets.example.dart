@@ -2,6 +2,7 @@
 /// Firebase Console → Project settings → Your apps → Web (</>) app
 ///
 /// Do NOT commit `firebase_secrets.dart` (it is in .gitignore).
+library;
 
 class FirebaseSecrets {
   static const String projectId = 'your-project-id';

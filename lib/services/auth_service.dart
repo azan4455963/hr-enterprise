@@ -20,13 +20,19 @@ class AuthService {
     AuditService? audit,
   })  : _auth = auth ?? FirebaseAuth.instance,
         _userBackend = userBackend ?? UserBackendService(),
-        _googleSignIn = googleSignIn ?? _createGoogleSignIn(),
+        _googleSignInOverride = googleSignIn,
         _audit = audit ?? AuditService();
 
   final FirebaseAuth _auth;
   final UserBackendService _userBackend;
-  final GoogleSignIn _googleSignIn;
+  final GoogleSignIn? _googleSignInOverride;
   final AuditService _audit;
+
+  // Built lazily on first use — constructing GoogleSignIn on web requires a
+  // client ID, so we defer it until the user actually signs in with Google.
+  GoogleSignIn? _googleSignInInstance;
+  GoogleSignIn get _googleSignIn =>
+      _googleSignInInstance ??= (_googleSignInOverride ?? _createGoogleSignIn());
 
   static GoogleSignIn _createGoogleSignIn() {
     if (kIsWeb || !FirebaseSecrets.isGoogleSignInConfigured) {

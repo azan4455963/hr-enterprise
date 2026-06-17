@@ -10,6 +10,37 @@ class AppColors {
   static const Color error = Color(0xFFEF4444);
   static const Color loginBackgroundAccent = Color(0xFF6BDBF2);
 
+  // ── Stitch light design system ─────────────────────────────────
+  /// Deep navy used for the brand wordmark, headings and primary buttons.
+  static const Color brandNavy = Color(0xFF1E3A8A);
+  static const Color brandBlue = Color(0xFF2563EB);
+  static const Color brandBlueSoft = Color(0xFFEFF4FF);
+
+  /// App canvas + sidebar.
+  static const Color canvas = Color(0xFFF8FAFC);
+  static const Color sidebarBg = Color(0xFFEEF2FF);
+  static const Color sidebarActive = Color(0xFF1E3A8A);
+
+  /// Cards / surfaces.
+  static const Color surface = Color(0xFFFFFFFF);
+  static const Color cardBorder = Color(0xFFE2E8F0);
+
+  /// Text.
+  static const Color heading = Color(0xFF0F172A);
+  static const Color textBody = Color(0xFF334155);
+  static const Color textMuted = Color(0xFF64748B);
+  static const Color textFaint = Color(0xFF94A3B8);
+
+  /// Status pills.
+  static const Color pillGreenBg = Color(0xFFDCFCE7);
+  static const Color pillGreenFg = Color(0xFF16A34A);
+  static const Color pillRedBg = Color(0xFFFEE2E2);
+  static const Color pillRedFg = Color(0xFFDC2626);
+  static const Color pillAmberBg = Color(0xFFFEF3C7);
+  static const Color pillAmberFg = Color(0xFFD97706);
+  static const Color pillBlueBg = Color(0xFFDBEAFE);
+  static const Color pillBlueFg = Color(0xFF2563EB);
+
   // Light
   static const Color lightBackground = Color(0xFFF8FAFC);
   static const Color lightSurface = Color(0xFFFFFFFF);

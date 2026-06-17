@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -12,6 +13,210 @@ import '../models/payroll_model.dart';
 
 class ExportService {
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
+  final _dayFormat = DateFormat('dd MMM yyyy');
+
+  /// Full single-employee profile report: details, attendance, leave & payroll.
+  Future<Uint8List> buildEmployeeProfilePdf({
+    required EmployeeModel employee,
+    required List<AttendanceModel> attendance,
+    required List<LeaveRequestModel> leaves,
+    required List<PayrollModel> payroll,
+    bool includeSalary = true,
+  }) async {
+    final doc = pw.Document();
+    final e = employee;
+
+    String tenure() {
+      if (e.joiningDate == null) return '-';
+      final months =
+          (DateTime.now().difference(e.joiningDate!).inDays / 30).floor();
+      if (months < 1) return 'Less than a month';
+      if (months < 12) return '$months month(s)';
+      final y = months ~/ 12, m = months % 12;
+      return m == 0 ? '$y year(s)' : '$y year(s) $m month(s)';
+    }
+
+    final presentDays = attendance
+        .where((a) =>
+            a.status == AttendanceStatus.present ||
+            a.status == AttendanceStatus.late)
+        .length;
+    final leaveDays = leaves
+        .where((l) => l.status == LeaveStatus.approved)
+        .fold<int>(0, (s, l) => s + l.days);
+
+    pw.Widget kv(String k, String v) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Row(children: [
+            pw.SizedBox(
+                width: 130,
+                child: pw.Text(k,
+                    style: pw.TextStyle(
+                        color: PdfColors.grey700, fontSize: 10))),
+            pw.Expanded(child: pw.Text(v, style: const pw.TextStyle(fontSize: 10))),
+          ]),
+        );
+
+    doc.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(
+            level: 0,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(e.fullName,
+                    style: pw.TextStyle(
+                        fontSize: 22, fontWeight: pw.FontWeight.bold)),
+                pw.Text(
+                  '${e.position ?? "-"}  •  ${e.departmentName ?? "-"}  •  ${e.status.name.toUpperCase()}',
+                  style: pw.TextStyle(color: PdfColors.grey700, fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 8),
+
+          // Snapshot
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              _statBox('Present Days', '$presentDays'),
+              _statBox('Leaves Taken', '$leaveDays'),
+              _statBox('Tenure', tenure()),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+
+          pw.Text('Personal Information',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          kv('Full Name', e.fullName),
+          kv('Father Name', e.fatherName ?? '-'),
+          kv('CNIC', e.cnic ?? '-'),
+          kv('Address', e.address ?? '-'),
+          kv('Email', e.email),
+          kv('Phone', e.phone ?? '-'),
+          pw.SizedBox(height: 12),
+
+          pw.Text('Employment',
+              style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          kv('Joining Date',
+              e.joiningDate != null ? _dayFormat.format(e.joiningDate!) : '-'),
+          kv('Leaving Date',
+              e.leavingDate != null ? _dayFormat.format(e.leavingDate!) : '-'),
+          kv('Currently Active',
+              e.status == EmployeeStatus.active ? 'Yes' : 'No'),
+          kv('Department', e.departmentName ?? '-'),
+          kv('Designation', e.position ?? '-'),
+          if (includeSalary)
+            kv('Current Salary',
+                e.salary != null ? 'Rs ${e.salary!.toStringAsFixed(0)}' : '-'),
+          pw.SizedBox(height: 16),
+
+          if (includeSalary && payroll.isNotEmpty) ...[
+            pw.Text('Monthly Salary Record',
+                style:
+                    pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: ['Month', 'Base', 'Overtime', 'Deductions', 'Net', 'Status'],
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              headerStyle: pw.TextStyle(
+                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+              data: payroll
+                  .map((p) => [
+                        '${p.month}/${p.year}',
+                        p.baseSalary.toStringAsFixed(0),
+                        p.overtime.toStringAsFixed(0),
+                        p.deductions.toStringAsFixed(0),
+                        p.calculatedNet.toStringAsFixed(0),
+                        p.status.name,
+                      ])
+                  .toList(),
+            ),
+            pw.SizedBox(height: 16),
+          ],
+
+          if (leaves.isNotEmpty) ...[
+            pw.Text('Leave Record',
+                style:
+                    pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: ['Type', 'From', 'To', 'Days', 'Status'],
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              headerStyle: pw.TextStyle(
+                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+              data: leaves
+                  .map((l) => [
+                        l.leaveType.name,
+                        _dayFormat.format(l.startDate),
+                        _dayFormat.format(l.endDate),
+                        '${l.days}',
+                        l.status.name,
+                      ])
+                  .toList(),
+            ),
+            pw.SizedBox(height: 16),
+          ],
+
+          if (attendance.isNotEmpty) ...[
+            pw.Text('Attendance Record (recent)',
+                style:
+                    pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 6),
+            pw.TableHelper.fromTextArray(
+              headers: ['Date', 'Check In', 'Check Out', 'Status'],
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              headerStyle: pw.TextStyle(
+                  fontSize: 9, fontWeight: pw.FontWeight.bold),
+              data: attendance
+                  .take(60)
+                  .map((a) => [
+                        _dayFormat.format(a.date),
+                        a.checkIn != null
+                            ? DateFormat('hh:mm a').format(a.checkIn!)
+                            : '-',
+                        a.checkOut != null
+                            ? DateFormat('hh:mm a').format(a.checkOut!)
+                            : '-',
+                        a.status.name,
+                      ])
+                  .toList(),
+            ),
+          ],
+
+          pw.SizedBox(height: 20),
+          pw.Text(
+            'Generated ${_dateFormat.format(DateTime.now())}',
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+          ),
+        ],
+      ),
+    );
+    return doc.save();
+  }
+
+  static pw.Widget _statBox(String label, String value) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey400),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(value,
+              style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.Text(label,
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+        ],
+      ),
+    );
+  }
 
   Future<void> shareAttendancePdf(List<AttendanceModel> records) async {
     final doc = pw.Document();

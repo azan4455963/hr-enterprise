@@ -28,3 +28,7 @@ final authLoadingProvider = StateProvider<bool>((ref) => false);
 
 /// Set true on explicit sign-out so login does not auto biometric sign-in again.
 final skipBiometricOnLoginProvider = StateProvider<bool>((ref) => false);
+
+/// Tracks whether admin/super_admin is viewing in "employee mode"
+/// When true, admin sees only what employees can see.
+final employeeViewModeProvider = StateProvider<bool>((ref) => false);

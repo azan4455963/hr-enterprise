@@ -2,16 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
-import '../../../core/widgets/async_value_widget.dart';
-import '../../../core/widgets/glass_card.dart';
-import '../../../core/widgets/permission_gate.dart';
+import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
+import '../../../models/leave_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
+import '../../../providers/google_sheets_providers.dart';
 import '../../../providers/service_providers.dart';
+
+/// Selected department for the sheet-based attendance section.
+final attendanceDeptProvider = StateProvider<String>((ref) => _allDepts);
+const _allDepts = 'All Departments';
 
 class AttendanceScreen extends ConsumerWidget {
   const AttendanceScreen({super.key});
@@ -19,87 +24,77 @@ class AttendanceScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final attendance = ref.watch(todayAttendanceProvider);
+    final leaves = ref.watch(leaveRequestsProvider);
+    final isWide = ResponsiveBreakpoints.of(context).largerThan(TABLET);
     final user = ref.watch(currentUserProvider).valueOrNull;
-    final canMark = user != null
-        ? ref.watch(canMarkAttendanceProvider(user.id))
-        : const AsyncValue.data(false);
-    final hasEmployee = canMark.valueOrNull ?? false;
-    final fmt = DateFormat('HH:mm');
+    final canManage = user?.hasPermission('attendance_edit') ?? false;
+    final hasEmployee =
+        user != null && (ref.watch(canMarkAttendanceProvider(user.id)).valueOrNull ?? false);
 
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.all(24),
+    return DefaultTabController(
+      length: 2,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(isWide ? 28 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Attendance',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const Spacer(),
-                PermissionGate(
-                  permission: 'attendance_edit',
-                  child: OutlinedButton.icon(
-                    onPressed: () => context.push('/attendance/qr-display'),
-                    icon: const Icon(Icons.qr_code_2),
-                    label: const Text('Show QR'),
+                const Expanded(
+                  child: PageHeading(
+                    title: 'Attendance & Leaves',
+                    subtitle:
+                        'Monitor daily logs and manage employee leave requests.',
                   ),
                 ),
+                if (canManage)
+                  PrimaryButton(
+                    label: 'Generate Check-in QR',
+                    icon: Icons.qr_code_2,
+                    onPressed: () => context.go('/attendance/qr-display'),
+                  ),
               ],
             ),
+            const SizedBox(height: 22),
+            _StatRow(ref: ref, isWide: isWide),
             const SizedBox(height: 16),
-            if (hasEmployee) ...[
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+            _DeptAttendanceSection(isWide: isWide),
+            if (hasEmployee) _MyActions(ref: ref),
+            if (hasEmployee) const SizedBox(height: 16),
+            AppCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _manualAction(ref, context, checkIn: true),
-                    icon: const Icon(Icons.login),
-                    label: const Text('Check In'),
+                  const TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    labelColor: AppColors.brandNavy,
+                    unselectedLabelColor: AppColors.textMuted,
+                    indicatorColor: AppColors.brandNavy,
+                    labelStyle:
+                        TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    tabs: [
+                      Tab(text: 'Attendance Log'),
+                      Tab(text: 'Leave Requests'),
+                    ],
                   ),
-                  OutlinedButton.icon(
-                    onPressed: () => _manualAction(ref, context, checkIn: false),
-                    icon: const Icon(Icons.logout),
-                    label: const Text('Check Out'),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: () => context.push('/attendance/scan'),
-                    icon: const Icon(Icons.qr_code_scanner),
-                    label: const Text('Scan QR'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
+                  const Divider(height: 1, color: AppColors.cardBorder),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      height: 420,
+                      child: TabBarView(
+                        children: [
+                          _AttendanceLog(attendance: attendance, isWide: isWide),
+                          _LeaveList(
+                              leaves: leaves, isWide: isWide, ref: ref),
+                        ],
+                      ),
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 24),
-            ] else
-              const GlassCard(
-                child: Text(
-                  'Link your user account to an employee profile to record attendance.',
-                ),
-              ),
-            Text(
-              "Today's logs",
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: AsyncValueWidget(
-                value: attendance,
-                onRetry: () => ref.invalidate(todayAttendanceProvider),
-                data: (list) => list.isEmpty
-                    ? const Center(child: Text('No attendance records today'))
-                    : ListView.builder(
-                        itemCount: list.length,
-                        itemBuilder: (_, i) =>
-                            _AttendanceTile(record: list[i], fmt: fmt),
-                      ),
               ),
             ),
           ],
@@ -107,12 +102,255 @@ class AttendanceScreen extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Future<void> _manualAction(
-    WidgetRef ref,
-    BuildContext context, {
-    required bool checkIn,
-  }) async {
+class _StatRow extends StatelessWidget {
+  const _StatRow({required this.ref, required this.isWide});
+  final WidgetRef ref;
+  final bool isWide;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = ref.watch(todayAttendanceProvider);
+    final pendingLeave = ref.watch(pendingLeaveProvider);
+
+    final list = today.valueOrNull ?? const <AttendanceModel>[];
+    final present = list
+        .where((a) =>
+            a.status == AttendanceStatus.present ||
+            a.status == AttendanceStatus.late)
+        .length;
+    final late =
+        list.where((a) => a.status == AttendanceStatus.late).length;
+    final onLeave =
+        list.where((a) => a.status == AttendanceStatus.onLeave).length;
+    final pending = pendingLeave.valueOrNull?.length ?? 0;
+
+    return StatCardRow(
+      isWide: isWide,
+      cards: [
+        StatCard(
+          label: 'Present Today',
+          value: '$present',
+          icon: Icons.how_to_reg_outlined,
+          iconColor: AppColors.pillGreenFg,
+          iconBg: AppColors.pillGreenBg,
+          footer: 'Checked in',
+          footerColor: AppColors.pillGreenFg,
+        ),
+        StatCard(
+          label: 'Late Arrivals',
+          value: '$late',
+          icon: Icons.alarm,
+          iconColor: AppColors.pillRedFg,
+          iconBg: AppColors.pillRedBg,
+          footer: 'Requires review',
+        ),
+        StatCard(
+          label: 'On Leave',
+          value: '$onLeave',
+          icon: Icons.event_busy_outlined,
+          footer: 'Scheduled absence',
+        ),
+        StatCard(
+          label: 'Pending Requests',
+          value: '$pending',
+          icon: Icons.pending_actions_outlined,
+          iconColor: AppColors.pillAmberFg,
+          iconBg: AppColors.pillAmberBg,
+          footer: 'View leave requests',
+          footerColor: AppColors.brandBlue,
+        ),
+      ],
+    );
+  }
+}
+
+/// Department-filtered attendance pulled from attached Google Sheets.
+/// Sheets named like "Billing Attendance Jun" / "IT Attendance Jun" are grouped
+/// by department; the dropdown lets you view one department or all combined.
+class _DeptAttendanceSection extends ConsumerWidget {
+  const _DeptAttendanceSection({required this.isWide});
+  final bool isWide;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summaries = ref.watch(allAttendanceSheetSummariesProvider);
+
+    return summaries.maybeWhen(
+      orElse: () => const SizedBox.shrink(),
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+
+        final depts = <String>{for (final s in list) s.department}.toList()
+          ..sort();
+        var selected = ref.watch(attendanceDeptProvider);
+        if (selected != _allDepts && !depts.contains(selected)) {
+          selected = _allDepts;
+        }
+
+        final filtered = selected == _allDepts
+            ? list
+            : list.where((s) => s.department == selected).toList();
+        final combined =
+            combineAttendanceSummaries(filtered, department: selected);
+
+        return Column(
+          children: [
+            AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: SectionTitle(
+                          'Attendance by Department',
+                          subtitle: 'From attached sheets · auto-updates.',
+                        ),
+                      ),
+                      _DeptDropdown(
+                        departments: depts,
+                        selected: selected,
+                        onChanged: (v) =>
+                            ref.read(attendanceDeptProvider.notifier).state = v,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  StatCardRow(
+                    isWide: isWide,
+                    cards: [
+                      StatCard(
+                        label: 'Employees',
+                        value: '${combined.headcount}',
+                        icon: Icons.groups_rounded,
+                        footer: combined.periodLabel ?? selected,
+                      ),
+                      StatCard(
+                        label: 'Present',
+                        value: '${combined.present}',
+                        icon: Icons.check_circle_outline,
+                        iconColor: AppColors.pillGreenFg,
+                        iconBg: AppColors.pillGreenBg,
+                        footer: combined.periodLabel ?? 'from sheet',
+                        footerColor: AppColors.pillGreenFg,
+                      ),
+                      StatCard(
+                        label: 'Absent',
+                        value: '${combined.absent}',
+                        icon: Icons.cancel_outlined,
+                        iconColor: AppColors.pillRedFg,
+                        iconBg: AppColors.pillRedBg,
+                        footer: combined.periodLabel ?? 'from sheet',
+                      ),
+                      StatCard(
+                        label: 'On Leave',
+                        value: '${combined.leave}',
+                        icon: Icons.beach_access_rounded,
+                        iconColor: AppColors.pillAmberFg,
+                        iconBg: AppColors.pillAmberBg,
+                        footer: combined.periodLabel ?? 'from sheet',
+                        footerColor: AppColors.pillAmberFg,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DeptDropdown extends StatelessWidget {
+  const _DeptDropdown({
+    required this.departments,
+    required this.selected,
+    required this.onChanged,
+  });
+  final List<String> departments;
+  final String selected;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.canvas,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: selected,
+          isDense: true,
+          icon: const Icon(Icons.keyboard_arrow_down,
+              size: 16, color: AppColors.textMuted),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textBody,
+          ),
+          items: [
+            const DropdownMenuItem(value: _allDepts, child: Text(_allDepts)),
+            for (final d in departments)
+              DropdownMenuItem(value: d, child: Text(d)),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _MyActions extends StatelessWidget {
+  const _MyActions({required this.ref});
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Text('My attendance:',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textBody)),
+          PrimaryButton(
+            label: 'Check In',
+            icon: Icons.login,
+            color: AppColors.pillGreenFg,
+            onPressed: () => _manual(ref, context, checkIn: true),
+          ),
+          GhostButton(
+            label: 'Check Out',
+            icon: Icons.logout,
+            onPressed: () => _manual(ref, context, checkIn: false),
+          ),
+          PrimaryButton(
+            label: 'Scan QR',
+            icon: Icons.qr_code_scanner,
+            onPressed: () => context.go('/attendance/scan'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _manual(WidgetRef ref, BuildContext context,
+      {required bool checkIn}) async {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null) return;
     try {
@@ -132,9 +370,7 @@ class AttendanceScreen extends ConsumerWidget {
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(checkIn ? 'Checked in' : 'Checked out'),
-          ),
+          SnackBar(content: Text(checkIn ? 'Checked in' : 'Checked out')),
         );
       }
     } catch (e) {
@@ -147,43 +383,225 @@ class AttendanceScreen extends ConsumerWidget {
   }
 }
 
-class _AttendanceTile extends StatelessWidget {
-  const _AttendanceTile({required this.record, required this.fmt});
-
-  final AttendanceModel record;
-  final DateFormat fmt;
+class _AttendanceLog extends StatelessWidget {
+  const _AttendanceLog({required this.attendance, required this.isWide});
+  final AsyncValue<List<AttendanceModel>> attendance;
+  final bool isWide;
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor;
-    switch (record.status) {
-      case AttendanceStatus.present:
-        statusColor = AppColors.success;
-      case AttendanceStatus.late:
-        statusColor = AppColors.warning;
-      case AttendanceStatus.absent:
-        statusColor = AppColors.error;
-      default:
-        statusColor = AppColors.primary;
-    }
+    final tf = DateFormat('hh:mm a');
+    final df = DateFormat('MMM d, yyyy');
+    return attendance.when(
+      data: (list) {
+        if (list.isEmpty) {
+          return const Center(
+            child: Text('No attendance records today',
+                style: TextStyle(color: AppColors.textMuted)),
+          );
+        }
+        return Column(
+          children: [
+            if (isWide) const _LogHeader(),
+            if (isWide) const Divider(height: 16, color: AppColors.cardBorder),
+            Expanded(
+              child: ListView.separated(
+                itemCount: list.length,
+                separatorBuilder: (_, _) =>
+                    const Divider(height: 1, color: AppColors.cardBorder),
+                itemBuilder: (_, i) {
+                  final r = list[i];
+                  final isLate = r.status == AttendanceStatus.late;
+                  final pill = isLate
+                      ? StatusPill.red('Late')
+                      : (r.status == AttendanceStatus.present
+                          ? StatusPill.green('On Time')
+                          : StatusPill.blue(r.status.name));
+                  final inTime = r.checkIn != null ? tf.format(r.checkIn!) : '—';
+                  final outTime =
+                      r.checkOut != null ? tf.format(r.checkOut!) : '—';
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: Row(
+                            children: [
+                              InitialAvatar(
+                                  name: r.employeeName ?? r.employeeId,
+                                  size: 34),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(r.employeeName ?? r.employeeId,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.heading),
+                                    overflow: TextOverflow.ellipsis),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (isWide)
+                          Expanded(
+                            flex: 3,
+                            child: Text(df.format(r.date),
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.textBody)),
+                          ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(inTime,
+                              style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: isLate
+                                      ? AppColors.pillRedFg
+                                      : AppColors.textBody)),
+                        ),
+                        if (isWide)
+                          Expanded(
+                            flex: 2,
+                            child: Text(outTime,
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.textBody)),
+                          ),
+                        Expanded(flex: 2, child: Align(alignment: Alignment.centerLeft, child: pill)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('$e')),
+    );
+  }
+}
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: GlassCard(
-        child: ListTile(
-          leading: Icon(Icons.person, color: statusColor),
-          title: Text(record.employeeName ?? record.employeeId),
-          subtitle: Text(
-            'In: ${record.checkIn != null ? fmt.format(record.checkIn!) : '-'} | '
-            'Out: ${record.checkOut != null ? fmt.format(record.checkOut!) : '-'} | '
-            '${record.attendanceMethod.name}',
-          ),
-          trailing: Chip(
-            label: Text(record.status.name),
-            backgroundColor: statusColor.withValues(alpha: 0.15),
-          ),
-        ),
+class _LogHeader extends StatelessWidget {
+  const _LogHeader();
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+        color: AppColors.textMuted);
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          Expanded(flex: 4, child: Text('EMPLOYEE', style: style)),
+          Expanded(flex: 3, child: Text('DATE', style: style)),
+          Expanded(flex: 2, child: Text('CLOCK IN', style: style)),
+          Expanded(flex: 2, child: Text('CLOCK OUT', style: style)),
+          Expanded(flex: 2, child: Text('STATUS', style: style)),
+        ],
       ),
     );
+  }
+}
+
+class _LeaveList extends StatelessWidget {
+  const _LeaveList(
+      {required this.leaves, required this.isWide, required this.ref});
+  final AsyncValue<List<LeaveRequestModel>> leaves;
+  final bool isWide;
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('MMM d');
+    final canApprove =
+        ref.watch(currentUserProvider).valueOrNull?.hasPermission('leave_approve') ??
+            false;
+    return leaves.when(
+      data: (list) {
+        if (list.isEmpty) {
+          return const Center(
+            child: Text('No leave requests',
+                style: TextStyle(color: AppColors.textMuted)),
+          );
+        }
+        return ListView.separated(
+          itemCount: list.length,
+          separatorBuilder: (_, _) =>
+              const Divider(height: 1, color: AppColors.cardBorder),
+          itemBuilder: (_, i) {
+            final l = list[i];
+            final pill = switch (l.status) {
+              LeaveStatus.approved => StatusPill.green('Approved'),
+              LeaveStatus.rejected => StatusPill.red('Rejected'),
+              LeaveStatus.cancelled => StatusPill.red('Cancelled'),
+              LeaveStatus.pending => StatusPill.amber('Pending'),
+            };
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+              child: Row(
+                children: [
+                  InitialAvatar(name: l.employeeName, size: 34),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.employeeName,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.heading)),
+                        Text(
+                          '${l.leaveType.name} • ${l.days} day(s) • ${df.format(l.startDate)}–${df.format(l.endDate)}',
+                          style: const TextStyle(
+                              fontSize: 11.5, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pill,
+                  if (canApprove && l.status == LeaveStatus.pending) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.check_circle,
+                          color: AppColors.pillGreenFg),
+                      onPressed: () => _decide(ref, l, true),
+                      tooltip: 'Approve',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.cancel,
+                          color: AppColors.pillRedFg),
+                      onPressed: () => _decide(ref, l, false),
+                      tooltip: 'Reject',
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('$e')),
+    );
+  }
+
+  Future<void> _decide(
+      WidgetRef ref, LeaveRequestModel l, bool approve) async {
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    final service = ref.read(leaveServiceProvider);
+    if (approve) {
+      await service.approve(l.id, user.id);
+    } else {
+      await service.reject(l.id, user.id);
+    }
   }
 }

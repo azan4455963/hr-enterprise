@@ -20,6 +20,9 @@ class PayrollScreen extends ConsumerWidget {
 
     return PermissionGate(
       permission: 'payroll_view',
+      fallback: const Scaffold(
+        body: Center(child: Text('You do not have permission to view payroll')),
+      ),
       child: Scaffold(
         body: Padding(
           padding: const EdgeInsets.all(24),
@@ -109,9 +112,6 @@ class PayrollScreen extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-      fallback: const Scaffold(
-        body: Center(child: Text('You do not have permission to view payroll')),
       ),
     );
   }

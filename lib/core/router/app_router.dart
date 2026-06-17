@@ -11,11 +11,17 @@ import '../../features/auth/screens/register_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/employees/screens/employee_detail_screen.dart';
 import '../../features/employees/screens/employee_form_screen.dart';
+import '../../features/employees/screens/employee_overview_screen.dart';
+import '../../features/employees/screens/employee_report_screen.dart';
+import '../../features/employees/screens/employee_search_screen.dart';
 import '../../features/employees/screens/employees_screen.dart';
 import '../../features/leave/screens/leave_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/onboarding/screens/onboarding_admin_screen.dart';
 import '../../features/onboarding/screens/onboarding_public_screen.dart';
+import '../../features/drive/screens/google_drive_admin_screen.dart';
+import '../../features/google_sheets/screens/google_sheet_viewer_screen.dart';
+import '../../features/google_sheets/screens/google_sheets_admin_screen.dart';
 import '../../features/payroll/screens/payroll_screen.dart';
 import '../../features/reports/screens/reports_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
@@ -35,10 +41,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) => refresh.redirect(state),
     routes: [
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -49,9 +52,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/onboard/:token',
-        builder: (context, state) => OnboardingPublicScreen(
-          token: state.pathParameters['token']!,
-        ),
+        builder: (context, state) =>
+            OnboardingPublicScreen(token: state.pathParameters['token']!),
       ),
       GoRoute(
         path: '/unauthorized',
@@ -63,6 +65,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),
+          ),
+          GoRoute(
+            path: '/employee-overview',
+            builder: (context, state) => const EmployeeOverviewScreen(),
+          ),
+          GoRoute(
+            path: '/employee-search',
+            builder: (context, state) => const EmployeeSearchScreen(),
           ),
           GoRoute(
             path: '/employees',
@@ -82,6 +92,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: 'edit',
                     builder: (context, state) => EmployeeFormScreen(
                       employeeId: state.pathParameters['id'],
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'report',
+                    builder: (context, state) => EmployeeReportScreen(
+                      employeeId: state.pathParameters['id']!,
                     ),
                   ),
                 ],
@@ -125,6 +141,25 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/settings',
             builder: (context, state) => const SettingsScreen(),
+          ),
+          // Admin: Google Sheets management
+          GoRoute(
+            path: '/google-sheets',
+            builder: (context, state) => const GoogleSheetsAdminScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) {
+                  final sheet = state.extra as dynamic;
+                  return GoogleSheetViewerScreen(sheet: sheet);
+                },
+              ),
+            ],
+          ),
+          // Admin: Google Drive folder links
+          GoRoute(
+            path: '/google-drive',
+            builder: (context, state) => const GoogleDriveAdminScreen(),
           ),
         ],
       ),

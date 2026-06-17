@@ -84,7 +84,7 @@ class LeaveScreen extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<LeaveType>(
-                    value: leaveType,
+                    initialValue: leaveType,
                     decoration: const InputDecoration(labelText: 'Leave Type'),
                     items: LeaveType.values
                         .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
