@@ -11,6 +11,7 @@ class UserModel extends Equatable {
     this.photoUrl,
     this.departmentId,
     this.departmentName,
+    this.managedDepartments = const [],
     this.employeeId,
     this.companyId = 'default_company',
     this.permissions = const [],
@@ -27,8 +28,19 @@ class UserModel extends Equatable {
   final String? departmentId;
 
   /// For a Director (manager): the department they manage (by name).
+  /// Kept for back-compat; [managedDepartments] is the source of truth.
   final String? departmentName;
+
+  /// Departments a Director manages (can be one or many).
+  final List<String> managedDepartments;
   final String? employeeId;
+
+  /// Effective list of departments this user is scoped to (Director).
+  List<String> get departments => managedDepartments.isNotEmpty
+      ? managedDepartments
+      : (departmentName != null && departmentName!.isNotEmpty
+          ? [departmentName!]
+          : const []);
   final String companyId;
   final List<String> permissions;
   final bool isActive;
@@ -55,6 +67,8 @@ class UserModel extends Equatable {
       photoUrl: map['photoUrl'] as String?,
       departmentId: map['departmentId'] as String?,
       departmentName: map['departmentName'] as String?,
+      managedDepartments:
+          List<String>.from(map['managedDepartments'] as List? ?? const []),
       employeeId: map['employeeId'] as String?,
       companyId: map['companyId'] as String? ?? 'default_company',
       permissions: List<String>.from(map['permissions'] as List? ?? []),
@@ -71,6 +85,7 @@ class UserModel extends Equatable {
         'photoUrl': photoUrl,
         'departmentId': departmentId,
         'departmentName': departmentName,
+        'managedDepartments': managedDepartments,
         'employeeId': employeeId,
         'companyId': companyId,
         'permissions': permissions,

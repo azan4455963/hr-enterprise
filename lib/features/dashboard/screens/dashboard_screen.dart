@@ -22,12 +22,18 @@ class DashboardScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider).valueOrNull;
     final canViewSalary =
         user != null && ref.watch(rbacServiceProvider).canViewSalary(user);
+    final isDirector =
+        user != null && user.role == 'manager' && user.departments.isNotEmpty;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(isWide ? 28 : 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (isDirector) ...[
+            _DirectorBanner(departments: user.departments),
+            const SizedBox(height: 16),
+          ],
           _StatRow(ref: ref, isWide: isWide).animate().fadeIn(),
           const SizedBox(height: 20),
           if (isWide)
@@ -297,6 +303,118 @@ class _StatusChip extends StatelessWidget {
                 fontSize: 12, fontWeight: FontWeight.w800, color: color),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// ── Director banner + quick actions (shown to managers) ─────────────────
+class _DirectorBanner extends StatelessWidget {
+  const _DirectorBanner({required this.departments});
+  final List<String> departments;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: AppColors.brandNavy.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(Icons.workspace_premium_rounded,
+                    color: AppColors.brandNavy),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Director Dashboard',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.heading)),
+                    Text(
+                      'Managing: ${departments.join(", ")}',
+                      style: const TextStyle(
+                          fontSize: 12.5, color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _QuickAction(
+                  label: 'Find Employee',
+                  icon: Icons.person_search_rounded,
+                  onTap: () => context.go('/employee-search')),
+              _QuickAction(
+                  label: 'Add Employee',
+                  icon: Icons.person_add_alt_1_rounded,
+                  onTap: () => context.go('/employees/new')),
+              _QuickAction(
+                  label: 'Attendance',
+                  icon: Icons.event_available_rounded,
+                  onTap: () => context.go('/attendance')),
+              _QuickAction(
+                  label: 'Leave',
+                  icon: Icons.beach_access_rounded,
+                  onTap: () => context.go('/leave')),
+              _QuickAction(
+                  label: 'Reports',
+                  icon: Icons.bar_chart_rounded,
+                  onTap: () => context.go('/reports')),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction(
+      {required this.label, required this.icon, required this.onTap});
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.canvas,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.cardBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: AppColors.brandNavy),
+            const SizedBox(width: 8),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textBody)),
+          ],
+        ),
       ),
     );
   }

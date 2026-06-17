@@ -83,10 +83,12 @@ class DepartmentService {
     // Capture the department name so the director can be scoped to it.
     final snap = await _collection.doc(departmentId).get();
     final deptName = (snap.data()?['name'] as String?)?.trim() ?? '';
+
+    // Add this department to the director's managed list (can be many).
     await _users.updateUser(directorUid, {
       'role': RolePermissions.manager,
-      'departmentId': departmentId,
-      'departmentName': deptName,
+      'departmentName': deptName, // primary (back-compat)
+      'managedDepartments': FieldValue.arrayUnion([deptName]),
       'permissions': <String>[], // use role defaults
     });
     await _collection.doc(departmentId).update({
@@ -97,22 +99,38 @@ class DepartmentService {
       action: 'update',
       module: 'departments',
       targetId: departmentId,
-      details: {'assignedDirector': directorUid},
+      details: {'assignedDirector': directorUid, 'department': deptName},
     );
   }
 
-  /// Remove a Director: reverts the user to a regular employee and unscopes.
+  /// Remove a director from THIS department. If it was their only department,
+  /// they revert to a regular employee.
   Future<void> removeDirector(
     String departmentId, {
     required String directorUid,
     required String adminId,
   }) async {
-    await _users.updateUser(directorUid, {
-      'role': RolePermissions.employee,
-      'departmentId': null,
-      'departmentName': null,
-      'permissions': <String>[],
-    });
+    final snap = await _collection.doc(departmentId).get();
+    final deptName = (snap.data()?['name'] as String?)?.trim() ?? '';
+
+    final user = await _users.getById(directorUid);
+    final remaining = [...(user?.managedDepartments ?? const <String>[])]
+      ..remove(deptName);
+
+    if (remaining.isEmpty) {
+      // No departments left → back to a regular employee.
+      await _users.updateUser(directorUid, {
+        'role': RolePermissions.employee,
+        'departmentName': null,
+        'managedDepartments': <String>[],
+        'permissions': <String>[],
+      });
+    } else {
+      await _users.updateUser(directorUid, {
+        'managedDepartments': remaining,
+        'departmentName': remaining.first,
+      });
+    }
     await _collection.doc(departmentId).update({
       'directorIds': FieldValue.arrayRemove([directorUid]),
     });
@@ -121,7 +139,7 @@ class DepartmentService {
       action: 'update',
       module: 'departments',
       targetId: departmentId,
-      details: {'removedDirector': directorUid},
+      details: {'removedDirector': directorUid, 'department': deptName},
     );
   }
 }

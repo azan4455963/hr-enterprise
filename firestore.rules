@@ -53,13 +53,14 @@ service cloud.firestore {
       allow delete: if isAdminRole();
     }
 
-    function myDepartment() {
-      return userDoc().departmentName;
-    }
-
-    // A director (manager) is limited to their own department; admin sees all.
+    // A director (manager) is limited to their managed department(s); admin
+    // sees all; non-managers aren't department-restricted here.
     function inMyDept(dept) {
-      return isAdminRole() || role() != 'manager' || dept == myDepartment();
+      return isAdminRole() ||
+        role() != 'manager' ||
+        (('managedDepartments' in userDoc()) &&
+            userDoc().managedDepartments.hasAny([dept])) ||
+        dept == userDoc().departmentName;
     }
 
     match /employees/{employeeId} {

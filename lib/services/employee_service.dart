@@ -33,13 +33,15 @@ class EmployeeService {
 
   Stream<List<EmployeeModel>> watchEmployees({
     String? departmentId,
-    String? departmentName,
+    List<String>? departmentNames,
   }) {
-    // When scoped by department name (a director), query by that field and
-    // sort client-side — avoids a composite index requirement.
-    if (departmentName != null) {
+    // When scoped to a director's department(s), query by name(s) and sort
+    // client-side — avoids a composite index requirement.
+    if (departmentNames != null && departmentNames.isNotEmpty) {
+      // Firestore whereIn supports up to 30 values.
+      final scoped = departmentNames.take(30).toList();
       return _collection
-          .where('departmentName', isEqualTo: departmentName)
+          .where('departmentName', whereIn: scoped)
           .snapshots()
           .map((snap) {
         final list = snap.docs

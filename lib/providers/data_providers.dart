@@ -33,11 +33,11 @@ final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   final service = ref.watch(employeeServiceProvider);
 
-  // Director (manager): scoped to their own department only.
+  // Director (manager): scoped to their managed department(s).
   if (user != null &&
       user.role == RolePermissions.manager &&
-      (user.departmentName?.isNotEmpty ?? false)) {
-    return service.watchEmployees(departmentName: user.departmentName);
+      user.departments.isNotEmpty) {
+    return service.watchEmployees(departmentNames: user.departments);
   }
 
   // Admin / others: everyone.
