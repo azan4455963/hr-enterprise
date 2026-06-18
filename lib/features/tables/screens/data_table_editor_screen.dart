@@ -10,7 +10,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/data_table_providers.dart';
 
 /// Excel-style editor (PlutoGrid): inline cell editing, keyboard navigation,
-/// bulk add rows, paste from a spreadsheet, and colour-coded status cells.
+/// bulk add rows, paste, rename/delete columns, delete rows, colour-coded.
 class DataTableEditorScreen extends ConsumerStatefulWidget {
   const DataTableEditorScreen({super.key, required this.tableId});
   final String tableId;
@@ -26,7 +26,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   bool _loaded = false;
   bool _dirty = false;
   bool _saving = false;
-  int _structureKey = 0; // bump to rebuild the grid when columns/rows change
+  int _structureKey = 0;
 
   String _field(int i) => 'c$i';
 
@@ -113,25 +113,25 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           GhostButton(
-            label: 'Add Column',
-            icon: Icons.view_column_outlined,
-            onPressed: _addColumn,
-          ),
+              label: 'Add Column',
+              icon: Icons.view_column_outlined,
+              onPressed: _addColumn),
           GhostButton(
-            label: 'Add Row',
-            icon: Icons.table_rows_outlined,
-            onPressed: _columns.isEmpty ? () {} : () => _addRows(1),
-          ),
+              label: 'Edit Columns',
+              icon: Icons.edit_note_rounded,
+              onPressed: _columns.isEmpty ? () {} : _editColumns),
           GhostButton(
-            label: 'Add 10 Rows',
-            icon: Icons.playlist_add_rounded,
-            onPressed: _columns.isEmpty ? () {} : () => _addRows(10),
-          ),
+              label: 'Add Row',
+              icon: Icons.table_rows_outlined,
+              onPressed: _columns.isEmpty ? () {} : () => _addRows(1)),
           GhostButton(
-            label: 'Paste',
-            icon: Icons.content_paste_rounded,
-            onPressed: _pasteFromClipboard,
-          ),
+              label: 'Add 10 Rows',
+              icon: Icons.playlist_add_rounded,
+              onPressed: _columns.isEmpty ? () {} : () => _addRows(10)),
+          GhostButton(
+              label: 'Paste',
+              icon: Icons.content_paste_rounded,
+              onPressed: _pasteFromClipboard),
           const SizedBox(width: 4),
           Text('${_rows.length} rows · ${_columns.length} cols',
               style:
@@ -146,7 +146,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.grid_on_rounded, size: 56, color: AppColors.textFaint),
+          const Icon(Icons.grid_on_rounded,
+              size: 56, color: AppColors.textFaint),
           const SizedBox(height: 10),
           const Text('Empty table',
               style: TextStyle(color: AppColors.textMuted)),
@@ -162,7 +163,33 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 
   Widget _grid() {
-    final columns = [
+    final columns = <PlutoColumn>[
+      // Row-number + delete column (Excel-style row header).
+      PlutoColumn(
+        title: '#',
+        field: 'actions',
+        type: PlutoColumnType.text(),
+        width: 64,
+        frozen: PlutoColumnFrozen.start,
+        enableEditingMode: false,
+        enableColumnDrag: false,
+        enableContextMenu: false,
+        enableSorting: false,
+        backgroundColor: const Color(0xFFF1F5F9),
+        renderer: (ctx) => Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('${ctx.rowIdx + 1}',
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textMuted)),
+            InkWell(
+              onTap: () => _deleteRow(ctx.rowIdx),
+              child: const Icon(Icons.close_rounded,
+                  size: 14, color: AppColors.textFaint),
+            ),
+          ],
+        ),
+      ),
       for (var i = 0; i < _columns.length; i++)
         PlutoColumn(
           title: _columns[i],
@@ -170,13 +197,15 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           type: PlutoColumnType.text(),
           width: 150,
           enableContextMenu: false,
+          enableSorting: false,
           enableDropToResize: true,
           renderer: _statusRenderer,
         ),
     ];
-    final rows = [
+    final rows = <PlutoRow>[
       for (final r in _rows)
         PlutoRow(cells: {
+          'actions': PlutoCell(value: ''),
           for (var i = 0; i < _columns.length; i++)
             _field(i): PlutoCell(value: i < r.length ? r[i] : ''),
         }),
@@ -187,6 +216,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       columns: columns,
       rows: rows,
       onChanged: (e) {
+        if (e.column.field == 'actions') return;
         final ci = int.tryParse(e.column.field.substring(1)) ?? -1;
         if (ci < 0 || e.rowIdx >= _rows.length) return;
         while (_rows[e.rowIdx].length < _columns.length) {
@@ -195,9 +225,29 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         _rows[e.rowIdx][ci] = e.value?.toString() ?? '';
         if (!_dirty) setState(() => _dirty = true);
       },
-      configuration: const PlutoGridConfiguration(
-        columnSize: PlutoGridColumnSizeConfig(
-          autoSizeMode: PlutoAutoSizeMode.none,
+      configuration: PlutoGridConfiguration(
+        columnSize: const PlutoGridColumnSizeConfig(
+            autoSizeMode: PlutoAutoSizeMode.none),
+        style: PlutoGridStyleConfig(
+          gridBackgroundColor: Colors.white,
+          rowColor: Colors.white,
+          oddRowColor: const Color(0xFFF8FAFC), // alternating like Excel
+          activatedColor: AppColors.brandBlueSoft,
+          gridBorderColor: AppColors.cardBorder,
+          borderColor: AppColors.cardBorder,
+          columnTextStyle: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.heading,
+          ),
+          cellTextStyle:
+              const TextStyle(fontSize: 12.5, color: AppColors.textBody),
+          columnHeight: 40,
+          rowHeight: 38,
+          enableColumnBorderVertical: true,
+          enableCellBorderVertical: true,
+          enableCellBorderHorizontal: true,
+          gridBorderRadius: BorderRadius.circular(8),
         ),
       ),
     );
@@ -206,15 +256,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   Widget _statusRenderer(PlutoColumnRendererContext ctx) {
     final v = ctx.cell.value?.toString() ?? '';
     final sc = _statusColor(v);
-    if (sc == null) {
-      return Text(v, overflow: TextOverflow.ellipsis);
-    }
+    if (sc == null) return Text(v, overflow: TextOverflow.ellipsis);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: sc.bg,
-        borderRadius: BorderRadius.circular(6),
-      ),
+      decoration:
+          BoxDecoration(color: sc.bg, borderRadius: BorderRadius.circular(6)),
       child: Text(v,
           style: TextStyle(color: sc.fg, fontWeight: FontWeight.w600),
           overflow: TextOverflow.ellipsis),
@@ -236,11 +282,41 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     });
   }
 
+  /// Rename / delete / reorder columns via a dialog.
+  Future<void> _editColumns() async {
+    final result = await showDialog<List<({int idx, String name})>>(
+      context: context,
+      builder: (_) => _EditColumnsDialog(columns: _columns),
+    );
+    if (result == null) return;
+    setState(() {
+      final newCols = result.map((e) => e.name).toList();
+      final newRows = _rows
+          .map((r) => result
+              .map((e) => e.idx >= 0 && e.idx < r.length ? r[e.idx] : '')
+              .toList())
+          .toList();
+      _columns = newCols;
+      _rows = newRows;
+      _dirty = true;
+      _structureKey++;
+    });
+  }
+
   void _addRows(int n) {
     setState(() {
       for (var i = 0; i < n; i++) {
         _rows.add(List<String>.filled(_columns.length, ''));
       }
+      _dirty = true;
+      _structureKey++;
+    });
+  }
+
+  void _deleteRow(int idx) {
+    if (idx < 0 || idx >= _rows.length) return;
+    setState(() {
+      _rows.removeAt(idx);
       _dirty = true;
       _structureKey++;
     });
@@ -259,11 +335,9 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         .where((l) => l.trim().isNotEmpty)
         .toList();
     if (lines.isEmpty) return;
-
     final parsed = lines.map((l) => l.split('\t')).toList();
     setState(() {
       if (_columns.isEmpty) {
-        // First pasted line = headers, rest = rows.
         _columns = parsed.first.map((c) => c.trim()).toList();
         _rows = parsed.skip(1).map((r) {
           final row = List<String>.filled(_columns.length, '');
@@ -273,7 +347,6 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           return row;
         }).toList();
       } else {
-        // Append all pasted lines as rows, mapped to existing columns.
         for (final r in parsed) {
           final row = List<String>.filled(_columns.length, '');
           for (var i = 0; i < r.length && i < _columns.length; i++) {
@@ -328,14 +401,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          PrimaryButton(label: 'OK', onPressed: () => Navigator.pop(ctx, c.text)),
+          PrimaryButton(
+              label: 'OK', onPressed: () => Navigator.pop(ctx, c.text)),
         ],
       ),
     );
   }
 }
 
-/// Colour for a status-like cell value (attendance etc.).
 ({Color bg, Color fg})? _statusColor(String raw) {
   final v = raw.trim().toLowerCase();
   if (v.isEmpty || v == '-') return null;
@@ -352,4 +425,82 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     return (bg: AppColors.pillGreenBg, fg: AppColors.pillGreenFg);
   }
   return null;
+}
+
+/// Dialog to rename / delete columns. Returns the kept columns as
+/// (original index, new name), preserving order.
+class _EditColumnsDialog extends StatefulWidget {
+  const _EditColumnsDialog({required this.columns});
+  final List<String> columns;
+
+  @override
+  State<_EditColumnsDialog> createState() => _EditColumnsDialogState();
+}
+
+class _EditColumnsDialogState extends State<_EditColumnsDialog> {
+  late final List<({int idx, TextEditingController c})> _items = [
+    for (var i = 0; i < widget.columns.length; i++)
+      (idx: i, c: TextEditingController(text: widget.columns[i])),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Edit Columns',
+          style: TextStyle(fontWeight: FontWeight.w700)),
+      content: SizedBox(
+        width: 420,
+        child: _items.isEmpty
+            ? const Text('No columns left. Add one after closing.')
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 0; i < _items.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _items[i].c,
+                              decoration: const InputDecoration(
+                                  isDense: true, labelText: 'Column'),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: AppColors.error),
+                            tooltip: 'Delete column',
+                            onPressed: () => setState(() => _items.removeAt(i)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        PrimaryButton(
+          label: 'Save',
+          onPressed: () {
+            final result = [
+              for (final it in _items)
+                (
+                  idx: it.idx,
+                  name: it.c.text.trim().isEmpty
+                      ? 'Column'
+                      : it.c.text.trim()
+                ),
+            ];
+            Navigator.pop(context, result);
+          },
+        ),
+      ],
+    );
+  }
 }
