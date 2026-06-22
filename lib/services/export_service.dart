@@ -15,6 +15,38 @@ class ExportService {
   final _dateFormat = DateFormat('yyyy-MM-dd HH:mm');
   final _dayFormat = DateFormat('dd MMM yyyy');
 
+  /// Export a custom data table as a PDF (landscape for wide tables).
+  Future<void> shareTablePdf({
+    required String title,
+    required List<String> columns,
+    required List<List<String>> rows,
+  }) async {
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        orientation: pw.PageOrientation.landscape,
+        build: (context) => [
+          pw.Header(level: 0, child: pw.Text(title)),
+          pw.SizedBox(height: 8),
+          pw.TableHelper.fromTextArray(
+            headers: columns,
+            cellStyle: const pw.TextStyle(fontSize: 8),
+            headerStyle:
+                pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold),
+            data: rows,
+          ),
+          pw.SizedBox(height: 16),
+          pw.Text('Generated ${_dateFormat.format(DateTime.now())}',
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: '${title.replaceAll(' ', '_')}.pdf',
+    );
+  }
+
   /// Full single-employee profile report: details, attendance, leave & payroll.
   Future<Uint8List> buildEmployeeProfilePdf({
     required EmployeeModel employee,

@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_table_providers.dart';
+import '../../../providers/service_providers.dart';
 
 /// Excel-style editor (PlutoGrid): inline cell editing, keyboard navigation,
 /// bulk add rows, paste, rename/delete columns, delete rows, colour-coded.
@@ -27,8 +28,23 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   bool _dirty = false;
   bool _saving = false;
   int _structureKey = 0;
+  String _tableName = 'Table';
+  PlutoGridStateManager? _sm;
 
   String _field(int i) => 'c$i';
+
+  /// Pull the grid's current values back into [_rows] (reflects edits + sort).
+  void _syncFromGrid() {
+    final sm = _sm;
+    if (sm == null) return;
+    _rows = [
+      for (final row in sm.rows)
+        [
+          for (var i = 0; i < _columns.length; i++)
+            row.cells[_field(i)]?.value?.toString() ?? '',
+        ],
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +65,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         if (!_loaded) {
           _columns = [...table.columns];
           _rows = table.rows.map((r) => [...r]).toList();
+          _tableName = table.name;
           _loaded = true;
         }
 
@@ -132,6 +149,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
               label: 'Paste',
               icon: Icons.content_paste_rounded,
               onPressed: _pasteFromClipboard),
+          GhostButton(
+              label: 'Export PDF',
+              icon: Icons.picture_as_pdf_outlined,
+              onPressed: _columns.isEmpty ? () {} : _exportPdf),
+          GhostButton(
+              label: 'Copy CSV',
+              icon: Icons.copy_all_rounded,
+              onPressed: _columns.isEmpty ? () {} : _copyCsv),
           const SizedBox(width: 4),
           Text('${_rows.length} rows · ${_columns.length} cols',
               style:
@@ -183,7 +208,10 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
                 style: const TextStyle(
                     fontSize: 11, color: AppColors.textMuted)),
             InkWell(
-              onTap: () => _deleteRow(ctx.rowIdx),
+              onTap: () {
+                ctx.stateManager.removeRows([ctx.row]);
+                setState(() => _dirty = true);
+              },
               child: const Icon(Icons.close_rounded,
                   size: 14, color: AppColors.textFaint),
             ),
@@ -197,7 +225,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           type: PlutoColumnType.text(),
           width: 150,
           enableContextMenu: false,
-          enableSorting: false,
+          enableSorting: true,
           enableDropToResize: true,
           renderer: _statusRenderer,
         ),
@@ -215,14 +243,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       key: ValueKey('grid_$_structureKey'),
       columns: columns,
       rows: rows,
+      onLoaded: (e) => _sm = e.stateManager,
       onChanged: (e) {
-        if (e.column.field == 'actions') return;
-        final ci = int.tryParse(e.column.field.substring(1)) ?? -1;
-        if (ci < 0 || e.rowIdx >= _rows.length) return;
-        while (_rows[e.rowIdx].length < _columns.length) {
-          _rows[e.rowIdx].add('');
-        }
-        _rows[e.rowIdx][ci] = e.value?.toString() ?? '';
         if (!_dirty) setState(() => _dirty = true);
       },
       configuration: PlutoGridConfiguration(
@@ -271,6 +293,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   Future<void> _addColumn() async {
     final name = await _prompt('New column name', hint: 'e.g. Name / Date');
     if (name == null || name.trim().isEmpty) return;
+    _syncFromGrid();
     setState(() {
       _columns.add(name.trim());
       for (final row in _rows) {
@@ -289,6 +312,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       builder: (_) => _EditColumnsDialog(columns: _columns),
     );
     if (result == null) return;
+    _syncFromGrid();
     setState(() {
       final newCols = result.map((e) => e.name).toList();
       final newRows = _rows
@@ -304,19 +328,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 
   void _addRows(int n) {
+    _syncFromGrid();
     setState(() {
       for (var i = 0; i < n; i++) {
         _rows.add(List<String>.filled(_columns.length, ''));
       }
-      _dirty = true;
-      _structureKey++;
-    });
-  }
-
-  void _deleteRow(int idx) {
-    if (idx < 0 || idx >= _rows.length) return;
-    setState(() {
-      _rows.removeAt(idx);
       _dirty = true;
       _structureKey++;
     });
@@ -336,6 +352,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         .toList();
     if (lines.isEmpty) return;
     final parsed = lines.map((l) => l.split('\t')).toList();
+    _syncFromGrid();
     setState(() {
       if (_columns.isEmpty) {
         _columns = parsed.first.map((c) => c.trim()).toList();
@@ -362,6 +379,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 
   Future<void> _save() async {
+    _syncFromGrid();
     setState(() => _saving = true);
     try {
       final user = ref.read(currentUserProvider).valueOrNull;
@@ -377,6 +395,37 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _exportPdf() async {
+    _syncFromGrid();
+    try {
+      await ref.read(exportServiceProvider).shareTablePdf(
+            title: _tableName,
+            columns: _columns,
+            rows: _rows,
+          );
+    } catch (e) {
+      _snack('Export failed: $e');
+    }
+  }
+
+  void _copyCsv() {
+    _syncFromGrid();
+    String esc(String v) =>
+        v.contains(',') || v.contains('"') || v.contains('\n')
+            ? '"${v.replaceAll('"', '""')}"'
+            : v;
+    final buf = StringBuffer()
+      ..writeln(_columns.map(esc).join(','));
+    for (final r in _rows) {
+      buf.writeln([
+        for (var i = 0; i < _columns.length; i++)
+          esc(i < r.length ? r[i] : ''),
+      ].join(','));
+    }
+    Clipboard.setData(ClipboardData(text: buf.toString()));
+    _snack('Copied as CSV — paste into Excel/Sheets.');
   }
 
   void _snack(String m) {
