@@ -51,14 +51,16 @@ class DataTableService {
     return ref.id;
   }
 
-  /// Save the whole table (columns + rows).
+  /// Save the whole table (columns + rows). Optionally also renames it.
   Future<void> save(
     String id, {
+    String? name,
     required List<String> columns,
     required List<List<String>> rows,
     required String userId,
   }) async {
     await _ref.doc(id).update({
+      if (name != null) 'name': name.trim(),
       'columns': columns,
       'rows': [
         for (final r in rows) {'cells': r},

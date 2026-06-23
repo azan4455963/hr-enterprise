@@ -14,6 +14,7 @@ import '../../../models/payroll_model.dart';
 import '../../../models/google_sheet_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
+import '../../../providers/data_table_providers.dart';
 import '../../../providers/drive_providers.dart';
 import '../../../providers/google_sheets_providers.dart';
 import '../../../providers/service_providers.dart';
@@ -49,7 +50,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
           );
         }
         return DefaultTabController(
-          length: 5,
+          length: 7,
           child: Scaffold(
             backgroundColor: AppColors.canvas,
             appBar: AppBar(
@@ -102,9 +103,11 @@ class EmployeeDetailScreen extends ConsumerWidget {
                     TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                 tabs: [
                   Tab(text: 'Overview'),
+                  Tab(text: 'Timeline'),
                   Tab(text: 'Attendance'),
                   Tab(text: 'Leave'),
                   Tab(text: 'Payroll'),
+                  Tab(text: 'Tables'),
                   Tab(text: 'Sheet Data'),
                 ],
               ),
@@ -112,10 +115,12 @@ class EmployeeDetailScreen extends ConsumerWidget {
             body: TabBarView(
               children: [
                 _OverviewTab(emp: emp, canViewSalary: canViewSalary),
+                _TimelineTab(employeeId: employeeId, emp: emp),
                 _AttendanceTab(employeeId: employeeId),
                 _LeaveTab(employeeId: employeeId),
                 _PayrollTab(
                     employeeId: employeeId, canViewSalary: canViewSalary),
+                _TablesDataTab(name: emp.fullName, email: emp.email),
                 _SheetDataTab(name: emp.fullName, email: emp.email),
               ],
             ),
@@ -789,6 +794,291 @@ class _SheetDataTab extends ConsumerWidget {
             ),
         ],
       ],
+    );
+  }
+}
+
+/// ── Timeline tab (unified chronological view of all events) ──────────────
+class _TimelineTab extends ConsumerWidget {
+  const _TimelineTab({required this.employeeId, required this.emp});
+  final String employeeId;
+  final EmployeeModel emp;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final attendance = ref.watch(employeeAttendanceHistoryProvider(employeeId));
+    final leaves = ref.watch(employeeLeaveHistoryProvider(employeeId));
+    final payroll = ref.watch(employeePayrollHistoryProvider(employeeId));
+
+    final attList = attendance.valueOrNull ?? [];
+    final leaveList = leaves.valueOrNull ?? [];
+    final payList = payroll.valueOrNull ?? [];
+
+    if (attendance.isLoading && leaves.isLoading && payroll.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final events = <_TimelineEvent>[];
+
+    // Joining
+    if (emp.joiningDate != null) {
+      events.add(_TimelineEvent(
+        date: emp.joiningDate!,
+        icon: Icons.flag_rounded,
+        color: AppColors.brandBlue,
+        title: 'Joined Company',
+        subtitle: '${emp.position ?? "Employee"} · ${emp.departmentName ?? ""}',
+        module: 'employment',
+      ));
+    }
+
+    // Attendance (group by month to avoid flood)
+    final attByMonth = <String, int>{};
+    for (final a in attList) {
+      if (a.status == AttendanceStatus.present ||
+          a.status == AttendanceStatus.late) {
+        final key = DateFormat('yyyy-MM').format(a.date);
+        attByMonth[key] = (attByMonth[key] ?? 0) + 1;
+      }
+    }
+    for (final entry in attByMonth.entries) {
+      final parts = entry.key.split('-');
+      final dt = DateTime(int.parse(parts[0]), int.parse(parts[1]));
+      events.add(_TimelineEvent(
+        date: dt,
+        icon: Icons.check_circle_outline,
+        color: AppColors.success,
+        title: 'Attendance: ${entry.value} days present',
+        subtitle: DateFormat('MMMM yyyy').format(dt),
+        module: 'attendance',
+      ));
+    }
+
+    // Leave
+    for (final l in leaveList) {
+      events.add(_TimelineEvent(
+        date: l.startDate,
+        icon: Icons.beach_access_rounded,
+        color: AppColors.pillBlueFg,
+        title:
+            '${l.leaveType.name[0].toUpperCase()}${l.leaveType.name.substring(1)} Leave · ${l.days} day(s)',
+        subtitle: '${_fmtDate(l.startDate)} → ${_fmtDate(l.endDate)} · ${l.status.name}',
+        module: 'leave',
+      ));
+    }
+
+    // Payroll
+    double? prevBase;
+    final sortedPay = [...payList]
+      ..sort((a, b) =>
+          DateTime(a.year, a.month).compareTo(DateTime(b.year, b.month)));
+    for (final p in sortedPay) {
+      events.add(_TimelineEvent(
+        date: DateTime(p.year, p.month),
+        icon: Icons.account_balance_wallet_rounded,
+        color: AppColors.pillAmberFg,
+        title:
+            'Salary — Net ${_fmtMoney(p.calculatedNet)}',
+        subtitle:
+            '${DateFormat('MMM yyyy').format(DateTime(p.year, p.month))} · ${p.status.name}',
+        module: 'payroll',
+      ));
+      if (prevBase != null && p.baseSalary != prevBase) {
+        events.add(_TimelineEvent(
+          date: DateTime(p.year, p.month),
+          icon: p.baseSalary > prevBase
+              ? Icons.trending_up_rounded
+              : Icons.trending_down_rounded,
+          color: p.baseSalary > prevBase
+              ? AppColors.pillGreenFg
+              : AppColors.pillRedFg,
+          title: 'Salary Change',
+          subtitle:
+              '${_fmtMoney(prevBase)} → ${_fmtMoney(p.baseSalary)}',
+          module: 'payroll',
+        ));
+      }
+      if (p.bonuses > 0) {
+        events.add(_TimelineEvent(
+          date: DateTime(p.year, p.month),
+          icon: Icons.star_rounded,
+          color: AppColors.pillGreenFg,
+          title: 'Bonus: ${_fmtMoney(p.bonuses)}',
+          subtitle: DateFormat('MMM yyyy').format(DateTime(p.year, p.month)),
+          module: 'payroll',
+        ));
+      }
+      prevBase = p.baseSalary;
+    }
+
+    // Leaving
+    if (emp.leavingDate != null) {
+      events.add(_TimelineEvent(
+        date: emp.leavingDate!,
+        icon: Icons.exit_to_app_rounded,
+        color: AppColors.error,
+        title: 'Left Company',
+        subtitle: _fmtDate(emp.leavingDate),
+        module: 'employment',
+      ));
+    }
+
+    events.sort((a, b) => b.date.compareTo(a.date));
+
+    if (events.isEmpty) {
+      return const _ErrorOrEmpty(message: 'No timeline events yet.');
+    }
+
+    // Group by month-year
+    final grouped = <String, List<_TimelineEvent>>{};
+    for (final e in events) {
+      final key = DateFormat('MMMM yyyy').format(e.date);
+      grouped.putIfAbsent(key, () => []).add(e);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final entry in grouped.entries) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: Text(entry.key,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: AppColors.heading)),
+          ),
+          for (final evt in entry.value)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: evt.color.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(evt.icon, size: 16, color: evt.color),
+                      ),
+                      Container(
+                          width: 2, height: 24, color: AppColors.cardBorder),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: AppCard(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(evt.title,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  color: AppColors.heading)),
+                          const SizedBox(height: 2),
+                          Text(evt.subtitle,
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TimelineEvent {
+  final DateTime date;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final String module;
+
+  const _TimelineEvent({
+    required this.date,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.module,
+  });
+}
+
+/// ── Tables Data tab (custom in-app tables matching this employee) ────────
+class _TablesDataTab extends ConsumerWidget {
+  const _TablesDataTab({required this.name, required this.email});
+  final String name;
+  final String email;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = (name: name, email: email);
+    final matchesAsync = ref.watch(employeeTableMatchesProvider(key));
+
+    return matchesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _ErrorOrEmpty(message: 'Could not load tables.\n$e'),
+      data: (matches) {
+        if (matches.isEmpty) {
+          return const _ErrorOrEmpty(
+              message:
+                  'No matching records in custom tables.\nCreate a table with employee names to see data here.');
+        }
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            for (final m in matches) ...[
+              Row(
+                children: [
+                  const Icon(Icons.grid_on_rounded,
+                      size: 16, color: AppColors.brandNavy),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(m.tableName,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: AppColors.heading)),
+                  ),
+                  Text('${m.matchingRows.length} row(s)',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textMuted)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              for (final row in m.matchingRows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: AppCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var c = 0;
+                            c < m.columns.length && c < row.length;
+                            c++)
+                          if (row[c].isNotEmpty)
+                            _row(m.columns[c], row[c]),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        );
+      },
     );
   }
 }
