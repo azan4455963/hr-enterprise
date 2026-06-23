@@ -7,7 +7,9 @@ import '../../core/constants/permissions.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/utils/app_exception.dart';
 import '../../core/widgets/ui_kit.dart';
+import '../../features/ai/widgets/ai_assistant_panel.dart';
 import '../../features/dashboard/widgets/employee_search_dialog.dart';
+import '../../providers/ai_providers.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
 import '../../providers/google_sheets_providers.dart';
@@ -115,8 +117,9 @@ class _AppShellState extends ConsumerState<AppShell> {
       ],
     );
 
+    final Widget baseScaffold;
     if (isDesktop) {
-      return Scaffold(
+      baseScaffold = Scaffold(
         backgroundColor: AppColors.canvas,
         body: Row(
           children: [
@@ -134,49 +137,115 @@ class _AppShellState extends ConsumerState<AppShell> {
           ],
         ),
       );
+    } else {
+      baseScaffold = Scaffold(
+        backgroundColor: AppColors.canvas,
+        drawer: Drawer(
+          backgroundColor: AppColors.sidebarBg,
+          child: _Sidebar(
+            items: visibleItems,
+            selectedPath: location,
+            user: user,
+            badgeFor: badgeFor,
+            onSelect: (path) {
+              Navigator.pop(context);
+              context.go(path);
+            },
+            onAddEmployee: () {
+              Navigator.pop(context);
+              context.go('/employees/new');
+            },
+            onSettings: () {
+              Navigator.pop(context);
+              context.go('/settings');
+            },
+            onSignOut: () => _signOut(context, ref),
+            expanded: true,
+          ),
+        ),
+        body: content,
+        bottomNavigationBar: NavigationBar(
+          backgroundColor: AppColors.surface,
+          selectedIndex: selectedIndex.clamp(0, 4),
+          onDestinationSelected: (i) {
+            if (i < visibleItems.length) context.go(visibleItems[i].path);
+          },
+          destinations: visibleItems.take(5).map((n) {
+            final badge = badgeFor(n.badgeKey);
+            return NavigationDestination(
+              icon: badge > 0
+                  ? Badge(label: Text('$badge'), child: Icon(n.icon))
+                  : Icon(n.icon),
+              label: n.label,
+            );
+          }).toList(),
+        ),
+      );
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.canvas,
-      drawer: Drawer(
-        backgroundColor: AppColors.sidebarBg,
-        child: _Sidebar(
-          items: visibleItems,
-          selectedPath: location,
-          user: user,
-          badgeFor: badgeFor,
-          onSelect: (path) {
-            Navigator.pop(context);
-            context.go(path);
-          },
-          onAddEmployee: () {
-            Navigator.pop(context);
-            context.go('/employees/new');
-          },
-          onSettings: () {
-            Navigator.pop(context);
-            context.go('/settings');
-          },
-          onSignOut: () => _signOut(context, ref),
-          expanded: true,
+    // AI assistant: floating launcher (bottom-right) + slide-in panel (left).
+    // Admin-only.
+    final aiOpen = ref.watch(aiPanelOpenProvider);
+    return Stack(
+      children: [
+        baseScaffold,
+        if (aiOpen)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () =>
+                  ref.read(aiPanelOpenProvider.notifier).state = false,
+              child: const ColoredBox(color: Color(0x66000000)),
+            ),
+          ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          top: 0,
+          bottom: 0,
+          left: aiOpen ? 0 : -AiAssistantPanel.width,
+          child: const AiAssistantPanel(),
         ),
-      ),
-      body: content,
-      bottomNavigationBar: NavigationBar(
-        backgroundColor: AppColors.surface,
-        selectedIndex: selectedIndex.clamp(0, 4),
-        onDestinationSelected: (i) {
-          if (i < visibleItems.length) context.go(visibleItems[i].path);
-        },
-        destinations: visibleItems.take(5).map((n) {
-          final badge = badgeFor(n.badgeKey);
-          return NavigationDestination(
-            icon: badge > 0
-                ? Badge(label: Text('$badge'), child: Icon(n.icon))
-                : Icon(n.icon),
-            label: n.label,
-          );
-        }).toList(),
+        if (isAdmin && !aiOpen)
+          Positioned(
+            right: 20,
+            bottom: 20,
+            child: _AiLauncher(
+              onTap: () =>
+                  ref.read(aiPanelOpenProvider.notifier).state = true,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Floating button that opens the AI assistant panel.
+class _AiLauncher extends StatelessWidget {
+  const _AiLauncher({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 6,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.brandBlue, AppColors.primary],
+            ),
+          ),
+          child: const Icon(Icons.auto_awesome_rounded,
+              color: Colors.white, size: 26),
+        ),
       ),
     );
   }
