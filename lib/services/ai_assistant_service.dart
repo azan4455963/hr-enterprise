@@ -12,16 +12,40 @@ class AiAssistantService {
 
   final http.Client _client;
 
+  /// Resolve the provider from a key and list its models in one step.
+  ///
+  /// A `sk-` key may be OpenAI *or* DeepSeek (same prefix). We try OpenAI
+  /// first and fall back to DeepSeek if the key is rejected there — so the
+  /// user never has to pick.
+  Future<({AiProvider provider, List<String> models})> connect(
+      String apiKey) async {
+    final guess = AiProviderX.detect(apiKey);
+    if (guess == AiProvider.openai) {
+      try {
+        final models = await _listOpenAiCompatible(
+            AiProvider.openai.baseUrl, apiKey);
+        return (provider: AiProvider.openai, models: models);
+      } on AiException {
+        // Not a valid OpenAI key — try DeepSeek (same sk- prefix).
+        final models = await _listOpenAiCompatible(
+            AiProvider.deepseek.baseUrl, apiKey);
+        return (provider: AiProvider.deepseek, models: models);
+      }
+    }
+    return (provider: guess, models: await listModels(guess, apiKey));
+  }
+
   /// List the models available to this key. Throws [AiException] on failure.
   Future<List<String>> listModels(AiProvider provider, String apiKey) async {
+    if (provider.isOpenAiCompatible) {
+      return _listOpenAiCompatible(provider.baseUrl, apiKey);
+    }
     switch (provider) {
       case AiProvider.anthropic:
         return _listAnthropic(apiKey);
-      case AiProvider.openai:
-        return _listOpenAi(apiKey);
       case AiProvider.gemini:
         return _listGemini(apiKey);
-      case AiProvider.unknown:
+      default:
         throw const AiException('Unrecognised API key format.');
     }
   }
@@ -32,14 +56,16 @@ class AiAssistantService {
     required String systemPrompt,
     required List<AiChatMessage> messages,
   }) async {
+    if (config.provider.isOpenAiCompatible) {
+      return _chatOpenAiCompatible(
+          config.provider.baseUrl, config, systemPrompt, messages);
+    }
     switch (config.provider) {
       case AiProvider.anthropic:
         return _chatAnthropic(config, systemPrompt, messages);
-      case AiProvider.openai:
-        return _chatOpenAi(config, systemPrompt, messages);
       case AiProvider.gemini:
         return _chatGemini(config, systemPrompt, messages);
-      case AiProvider.unknown:
+      default:
         throw const AiException('No AI provider configured.');
     }
   }
@@ -86,15 +112,16 @@ class AiAssistantService {
     return buf.toString().trim();
   }
 
-  // ── OpenAI ──────────────────────────────────────────────────────────────
+  // ── OpenAI-compatible (OpenAI, DeepSeek, Groq) ──────────────────────────
   Map<String, String> _openAiHeaders(String key) => {
         'Authorization': 'Bearer $key',
         'content-type': 'application/json',
       };
 
-  Future<List<String>> _listOpenAi(String key) async {
+  Future<List<String>> _listOpenAiCompatible(
+      String baseUrl, String key) async {
     final res = await _client.get(
-      Uri.parse('https://api.openai.com/v1/models'),
+      Uri.parse('$baseUrl/models'),
       headers: _openAiHeaders(key),
     );
     _ensureOk(res);
@@ -102,7 +129,12 @@ class AiAssistantService {
     final ids = data.map((m) => m['id'].toString()).toList();
     // Surface chat-capable models first.
     ids.sort((a, b) {
-      bool chat(String s) => s.startsWith('gpt') || s.startsWith('o');
+      bool chat(String s) =>
+          s.startsWith('gpt') ||
+          s.startsWith('o') ||
+          s.contains('chat') ||
+          s.contains('llama') ||
+          s.contains('deepseek');
       if (chat(a) && !chat(b)) return -1;
       if (!chat(a) && chat(b)) return 1;
       return a.compareTo(b);
@@ -110,10 +142,11 @@ class AiAssistantService {
     return ids;
   }
 
-  Future<String> _chatOpenAi(
-      AiConfig c, String system, List<AiChatMessage> msgs) async {
+  Future<String> _chatOpenAiCompatible(
+      String baseUrl, AiConfig c, String system,
+      List<AiChatMessage> msgs) async {
     final res = await _client.post(
-      Uri.parse('https://api.openai.com/v1/chat/completions'),
+      Uri.parse('$baseUrl/chat/completions'),
       headers: _openAiHeaders(c.apiKey),
       body: jsonEncode({
         'model': c.model,

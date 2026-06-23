@@ -137,28 +137,31 @@ class _SetupViewState extends ConsumerState<_SetupView> {
 
   Future<void> _connect() async {
     final key = _keyController.text.trim();
-    final provider = AiProviderX.detect(key);
-    if (provider == AiProvider.unknown) {
+    final guess = AiProviderX.detect(key);
+    if (guess == AiProvider.unknown) {
       setState(() => _error =
-          'Could not recognise this key. Paste a Claude (sk-ant-…), '
-          'OpenAI (sk-…) or Gemini (AIza…) key.');
+          'Could not recognise this key. Paste a Claude (sk-ant-…), OpenAI / '
+          'DeepSeek (sk-…), Groq (gsk_…) or Gemini (AIza…) key.');
       return;
     }
     setState(() {
-      _detected = provider;
+      _detected = guess;
       _connecting = true;
       _error = null;
       _models = [];
       _selectedModel = null;
     });
     try {
-      final models =
-          await ref.read(aiAssistantServiceProvider).listModels(provider, key);
+      // connect() probes to resolve the OpenAI-vs-DeepSeek (sk-) ambiguity.
+      final result =
+          await ref.read(aiAssistantServiceProvider).connect(key);
       if (!mounted) return;
       setState(() {
-        _models = models;
-        _selectedModel =
-            models.isNotEmpty ? models.first : provider.fallbackModel;
+        _detected = result.provider;
+        _models = result.models;
+        _selectedModel = result.models.isNotEmpty
+            ? result.models.first
+            : result.provider.fallbackModel;
       });
     } catch (e) {
       if (!mounted) return;
@@ -166,7 +169,7 @@ class _SetupViewState extends ConsumerState<_SetupView> {
         // Key worked enough to detect provider; allow a fallback model.
         _error = '$e';
         _models = [];
-        _selectedModel = provider.fallbackModel;
+        _selectedModel = guess.fallbackModel;
       });
     } finally {
       if (mounted) setState(() => _connecting = false);
@@ -198,9 +201,9 @@ class _SetupViewState extends ConsumerState<_SetupView> {
                 color: AppColors.heading)),
         const SizedBox(height: 6),
         const Text(
-          'Paste any chat API key — Claude, OpenAI or Gemini. We detect the '
-          'provider automatically and load its models. The key is stored only '
-          'on this device.',
+          'Paste any chat API key — Claude, OpenAI, DeepSeek, Groq or Gemini. '
+          'We detect the provider automatically and load its models. The key '
+          'is stored only on this device.',
           style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
         ),
         const SizedBox(height: 16),
@@ -211,7 +214,7 @@ class _SetupViewState extends ConsumerState<_SetupView> {
           style: const TextStyle(fontSize: 13),
           decoration: InputDecoration(
             labelText: 'API key',
-            hintText: 'sk-ant-…  /  sk-…  /  AIza…',
+            hintText: 'sk-ant-…  /  sk-…  /  gsk_…  /  AIza…',
             prefixIcon: const Icon(Icons.vpn_key_outlined, size: 18),
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10)),

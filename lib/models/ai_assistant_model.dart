@@ -3,7 +3,7 @@
 // The provider is auto-detected from the shape of the API key, so the user
 // only pastes a key — no dropdown needed.
 
-enum AiProvider { anthropic, openai, gemini, unknown }
+enum AiProvider { anthropic, openai, deepseek, groq, gemini, unknown }
 
 extension AiProviderX on AiProvider {
   String get label {
@@ -12,10 +12,36 @@ extension AiProviderX on AiProvider {
         return 'Claude (Anthropic)';
       case AiProvider.openai:
         return 'OpenAI (GPT)';
+      case AiProvider.deepseek:
+        return 'DeepSeek';
+      case AiProvider.groq:
+        return 'Groq';
       case AiProvider.gemini:
         return 'Google Gemini';
       case AiProvider.unknown:
         return 'Unknown';
+    }
+  }
+
+  /// True for providers that speak the OpenAI chat-completions protocol
+  /// (OpenAI, DeepSeek, Groq) — they share request/response shapes and only
+  /// differ by base URL.
+  bool get isOpenAiCompatible =>
+      this == AiProvider.openai ||
+      this == AiProvider.deepseek ||
+      this == AiProvider.groq;
+
+  /// Base URL for OpenAI-compatible providers (empty for the others).
+  String get baseUrl {
+    switch (this) {
+      case AiProvider.openai:
+        return 'https://api.openai.com/v1';
+      case AiProvider.deepseek:
+        return 'https://api.deepseek.com/v1';
+      case AiProvider.groq:
+        return 'https://api.groq.com/openai/v1';
+      default:
+        return '';
     }
   }
 
@@ -26,6 +52,10 @@ extension AiProviderX on AiProvider {
         return 'claude-3-5-sonnet-latest';
       case AiProvider.openai:
         return 'gpt-4o-mini';
+      case AiProvider.deepseek:
+        return 'deepseek-chat';
+      case AiProvider.groq:
+        return 'llama-3.3-70b-versatile';
       case AiProvider.gemini:
         return 'gemini-1.5-flash';
       case AiProvider.unknown:
@@ -33,12 +63,15 @@ extension AiProviderX on AiProvider {
     }
   }
 
-  /// Detect the provider from an API key's prefix.
+  /// Best-effort provider guess from an API key's prefix. Note `sk-` is
+  /// ambiguous (OpenAI *or* DeepSeek) — [AiAssistantService.connect] probes to
+  /// resolve that automatically.
   static AiProvider detect(String key) {
     final k = key.trim();
     if (k.startsWith('sk-ant-')) return AiProvider.anthropic;
+    if (k.startsWith('gsk_')) return AiProvider.groq;
     if (k.startsWith('AIza')) return AiProvider.gemini;
-    if (k.startsWith('sk-')) return AiProvider.openai;
+    if (k.startsWith('sk-')) return AiProvider.openai; // or DeepSeek
     return AiProvider.unknown;
   }
 }
