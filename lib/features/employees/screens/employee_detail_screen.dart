@@ -9,6 +9,7 @@ import '../../../core/widgets/permission_gate.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
 import '../../../models/employee_model.dart';
+import '../../../models/employee_record_model.dart';
 import '../../../models/leave_model.dart';
 import '../../../models/payroll_model.dart';
 import '../../../models/google_sheet_model.dart';
@@ -50,7 +51,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
           );
         }
         return DefaultTabController(
-          length: 7,
+          length: 8,
           child: Scaffold(
             backgroundColor: AppColors.canvas,
             appBar: AppBar(
@@ -103,6 +104,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
                     TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                 tabs: [
                   Tab(text: 'Overview'),
+                  Tab(text: 'Records'),
                   Tab(text: 'Timeline'),
                   Tab(text: 'Attendance'),
                   Tab(text: 'Leave'),
@@ -115,6 +117,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
             body: TabBarView(
               children: [
                 _OverviewTab(emp: emp, canViewSalary: canViewSalary),
+                _RecordsTab(employeeId: employeeId),
                 _TimelineTab(employeeId: employeeId, emp: emp),
                 _AttendanceTab(employeeId: employeeId),
                 _LeaveTab(employeeId: employeeId),
@@ -1098,6 +1101,421 @@ class _ErrorOrEmpty extends StatelessWidget {
           style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
         ),
       ),
+    );
+  }
+}
+
+/// ── Records tab (free-form custom data stored under this employee's id) ───
+class _RecordsTab extends ConsumerWidget {
+  const _RecordsTab({required this.employeeId});
+  final String employeeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recordsAsync = ref.watch(employeeRecordsProvider(employeeId));
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final canEdit = user?.hasPermission('employees_edit') ?? false;
+
+    return recordsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _ErrorOrEmpty(message: 'Could not load records.\n$e'),
+      data: (records) {
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (canEdit)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PrimaryButton(
+                  label: 'Add Data',
+                  icon: Icons.add,
+                  onPressed: () => _openEditor(context, ref),
+                ),
+              ),
+            const SizedBox(height: 14),
+            if (records.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 30),
+                child: _ErrorOrEmpty(
+                  message: 'No records yet.\nAdd any data — assets, documents, '
+                      'notes — and it is stored under this employee.',
+                ),
+              )
+            else
+              for (final r in records)
+                _recordCard(context, ref, r, canEdit),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _recordCard(BuildContext context, WidgetRef ref,
+      EmployeeRecordModel r, bool canEdit) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(r.title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: AppColors.heading)),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandBlueSoft,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(r.category,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.brandBlue)),
+                ),
+                if (canEdit) ...[
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.edit_outlined,
+                        size: 18, color: AppColors.textMuted),
+                    onPressed: () =>
+                        _openEditor(context, ref, existing: r),
+                  ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    icon: const Icon(Icons.delete_outline,
+                        size: 18, color: AppColors.error),
+                    onPressed: () => _confirmDelete(context, ref, r),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 6),
+            for (final f in r.fields)
+              if (f.value.isNotEmpty) _row(f.label, f.value),
+            if (r.note?.isNotEmpty ?? false) ...[
+              const SizedBox(height: 6),
+              Text(r.note!,
+                  style: const TextStyle(
+                      fontSize: 12.5, color: AppColors.textBody)),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  r.visibleToEmployee
+                      ? Icons.visibility_rounded
+                      : Icons.lock_outline_rounded,
+                  size: 13,
+                  color: r.visibleToEmployee
+                      ? AppColors.success
+                      : AppColors.textFaint,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  r.visibleToEmployee
+                      ? 'Visible to employee'
+                      : 'Admin only',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: r.visibleToEmployee
+                          ? AppColors.success
+                          : AppColors.textFaint),
+                ),
+                if (r.createdAt != null) ...[
+                  const Spacer(),
+                  Text(_fmtDate(r.createdAt),
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textFaint)),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openEditor(BuildContext context, WidgetRef ref,
+      {EmployeeRecordModel? existing}) async {
+    final result = await showDialog<EmployeeRecordModel>(
+      context: context,
+      builder: (_) => _RecordEditorDialog(initial: existing),
+    );
+    if (result == null) return;
+    final user = ref.read(currentUserProvider).valueOrNull;
+    final svc = ref.read(employeeRecordServiceProvider);
+    final record = EmployeeRecordModel(
+      id: existing?.id ?? '',
+      title: result.title,
+      category: result.category,
+      fields: result.fields,
+      note: result.note,
+      visibleToEmployee: result.visibleToEmployee,
+      createdAt: existing?.createdAt,
+      createdBy: existing?.createdBy ?? user?.id,
+    );
+    try {
+      if (existing == null) {
+        await svc.add(employeeId, record, userId: user?.id ?? '');
+      } else {
+        await svc.update(employeeId, record, userId: user?.id ?? '');
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: ${AppException.from(e).message}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(
+      BuildContext context, WidgetRef ref, EmployeeRecordModel r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Record'),
+        content: Text('Remove "${r.title}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final user = ref.read(currentUserProvider).valueOrNull;
+    try {
+      await ref
+          .read(employeeRecordServiceProvider)
+          .delete(employeeId, r.id, userId: user?.id ?? '');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppException.from(e).message)),
+        );
+      }
+    }
+  }
+}
+
+/// Add / edit a free-form employee record. Returns an [EmployeeRecordModel]
+/// (id is empty for a new record).
+class _RecordEditorDialog extends StatefulWidget {
+  const _RecordEditorDialog({this.initial});
+  final EmployeeRecordModel? initial;
+
+  @override
+  State<_RecordEditorDialog> createState() => _RecordEditorDialogState();
+}
+
+class _RecordEditorDialogState extends State<_RecordEditorDialog> {
+  late final TextEditingController _title =
+      TextEditingController(text: widget.initial?.title ?? '');
+  late final TextEditingController _category =
+      TextEditingController(text: widget.initial?.category ?? '');
+  late final TextEditingController _note =
+      TextEditingController(text: widget.initial?.note ?? '');
+  late bool _visible = widget.initial?.visibleToEmployee ?? false;
+  late final List<({TextEditingController l, TextEditingController v})> _fields =
+      [
+    if (widget.initial != null && widget.initial!.fields.isNotEmpty)
+      for (final f in widget.initial!.fields)
+        (
+          l: TextEditingController(text: f.label),
+          v: TextEditingController(text: f.value)
+        )
+    else
+      (l: TextEditingController(), v: TextEditingController()),
+  ];
+
+  static const _categories = [
+    'Asset',
+    'Document',
+    'Training',
+    'Performance',
+    'Project',
+    'Note',
+    'General',
+  ];
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _category.dispose();
+    _note.dispose();
+    for (final f in _fields) {
+      f.l.dispose();
+      f.v.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final title = _title.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a title.')));
+      return;
+    }
+    final fields = [
+      for (final f in _fields)
+        if (f.l.text.trim().isNotEmpty || f.v.text.trim().isNotEmpty)
+          EmployeeRecordField(
+              label: f.l.text.trim(), value: f.v.text.trim()),
+    ];
+    Navigator.pop(
+      context,
+      EmployeeRecordModel(
+        id: widget.initial?.id ?? '',
+        title: title,
+        category: _category.text.trim().isEmpty
+            ? 'General'
+            : _category.text.trim(),
+        fields: fields,
+        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+        visibleToEmployee: _visible,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(widget.initial == null ? 'Add Data' : 'Edit Record',
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(
+                    isDense: true, labelText: 'Title *',
+                    hintText: 'e.g. Company Laptop, Offer Letter'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _category,
+                decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Category',
+                    hintText: 'Asset / Document / Note …'),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final c in _categories)
+                    ActionChip(
+                      label: Text(c, style: const TextStyle(fontSize: 11)),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => setState(() => _category.text = c),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Text('Fields',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: AppColors.heading)),
+              const SizedBox(height: 6),
+              for (var i = 0; i < _fields.length; i++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _fields[i].l,
+                          decoration: const InputDecoration(
+                              isDense: true, labelText: 'Label'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: _fields[i].v,
+                          decoration: const InputDecoration(
+                              isDense: true, labelText: 'Value'),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline,
+                            size: 18, color: AppColors.error),
+                        onPressed: _fields.length == 1
+                            ? null
+                            : () => setState(() {
+                                  _fields[i].l.dispose();
+                                  _fields[i].v.dispose();
+                                  _fields.removeAt(i);
+                                }),
+                      ),
+                    ],
+                  ),
+                ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add field'),
+                  onPressed: () => setState(() => _fields.add((
+                        l: TextEditingController(),
+                        v: TextEditingController()
+                      ))),
+                ),
+              ),
+              const SizedBox(height: 6),
+              TextField(
+                controller: _note,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Note (optional)',
+                    alignLabelWithHint: true),
+              ),
+              const SizedBox(height: 6),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _visible,
+                onChanged: (v) => setState(() => _visible = v),
+                title: const Text('Show to employee',
+                    style: TextStyle(fontSize: 13)),
+                subtitle: const Text(
+                    'If off, only admins/directors can see this record.',
+                    style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        PrimaryButton(label: 'Save', onPressed: _save),
+      ],
     );
   }
 }

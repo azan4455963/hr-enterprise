@@ -74,6 +74,19 @@ service cloud.firestore {
         inMyDept(request.resource.data.departmentName);
       allow delete: if isSignedIn() && hasPerm('employees_delete') &&
         inMyDept(resource.data.departmentName);
+
+      // Free-form per-employee records (assets, documents, notes, …).
+      // Admins/directors with employees_view can read; the linked employee can
+      // read only records explicitly marked visible. Writes need employees_edit.
+      match /records/{recordId} {
+        allow read: if isSignedIn() && (
+          hasPerm('employees_view') ||
+          (hasLinkedEmployee() &&
+            userDoc().employeeId == employeeId &&
+            resource.data.visibleToEmployee == true)
+        );
+        allow create, update, delete: if isSignedIn() && hasPerm('employees_edit');
+      }
     }
 
     function hasLinkedEmployee() {

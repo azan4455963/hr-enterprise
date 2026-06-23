@@ -7,6 +7,7 @@ import '../models/audit_log_model.dart';
 import '../models/company_settings_model.dart';
 import '../models/department_model.dart';
 import '../models/employee_model.dart';
+import '../models/employee_record_model.dart';
 import '../models/leave_model.dart';
 import '../models/notification_model.dart';
 import '../models/onboarding_model.dart';
@@ -86,6 +87,12 @@ final employeePayrollHistoryProvider =
   return ref.watch(payrollServiceProvider).watchPayroll().map(
         (list) => list.where((p) => p.employeeId == employeeId).toList(),
       );
+});
+
+/// Free-form custom records stored under one employee's id.
+final employeeRecordsProvider =
+    StreamProvider.family<List<EmployeeRecordModel>, String>((ref, employeeId) {
+  return ref.watch(employeeRecordServiceProvider).watch(employeeId);
 });
 
 final recentAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {
