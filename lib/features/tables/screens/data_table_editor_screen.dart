@@ -352,9 +352,20 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     );
   }
 
-  /// Finds the index of a column by name (case-insensitive).
-  int _columnIndex(String name) =>
-      _columns.indexWhere((c) => c.trim().toLowerCase() == name.toLowerCase());
+  /// Finds the index of a column whose name contains [keyword] as a whole word
+  /// (case-insensitive). Splits on spaces, slashes, dashes and underscores, so
+  /// "Date", "Current Date", "Date/Time", "Join_Date" all match "date".
+  int _dateTimeColumnIndex(String keyword) {
+    for (var i = 0; i < _columns.length; i++) {
+      final words = _columns[i]
+          .trim()
+          .toLowerCase()
+          .split(RegExp(r'[\s/_\-]+'))
+          .where((w) => w.isNotEmpty);
+      if (words.contains(keyword)) return i;
+    }
+    return -1;
+  }
 
   /// Returns today's day name (e.g., "Monday"), date (e.g., "22-Jun-2026"),
   /// and time (e.g., "14:30").
@@ -366,12 +377,12 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     return (day, date, time);
   }
 
-  /// Auto-fills the "Day", "Date", and "Time" columns in the given row if
-  /// those columns exist.
+  /// Auto-fills the "Day", "Date", and "Time" columns in the given row with the
+  /// current values, if those columns exist (and the cell is still empty).
   void _fillDayDateTime(List<String> row) {
-    final dayIdx = _columnIndex('day');
-    final dateIdx = _columnIndex('date');
-    final timeIdx = _columnIndex('time');
+    final dayIdx = _dateTimeColumnIndex('day');
+    final dateIdx = _dateTimeColumnIndex('date');
+    final timeIdx = _dateTimeColumnIndex('time');
     if (dayIdx < 0 && dateIdx < 0 && timeIdx < 0) return;
     final (day, date, time) = _now();
     if (dayIdx >= 0 && dayIdx < row.length && row[dayIdx].isEmpty) {
@@ -458,7 +469,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       for (final row in _rows) {
         row.add('');
       }
-      if (_rows.isEmpty) _rows.add(List<String>.filled(_columns.length, ''));
+      if (_rows.isEmpty) {
+        final row = List<String>.filled(_columns.length, '');
+        _fillDayDateTime(row);
+        _rows.add(row);
+      }
       _dirty = true;
       _structureKey++;
     });
