@@ -7,6 +7,7 @@ import 'package:pluto_grid_plus/pluto_grid_plus.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../../../models/data_table_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_table_providers.dart';
 import '../../../providers/service_providers.dart';
@@ -23,6 +24,10 @@ class DataTableEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
+  // All tabs/sheets in the workbook; the active one is mirrored into
+  // [_columns]/[_rows] for the grid.
+  List<DataSheet> _sheets = [];
+  int _active = 0;
   List<String> _columns = [];
   List<List<String>> _rows = [];
   bool _loaded = false;
@@ -33,6 +38,33 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   PlutoGridStateManager? _sm;
 
   String _field(int i) => 'c$i';
+
+  /// Write the grid's current values back into the active sheet.
+  void _commitActive() {
+    _syncFromGrid();
+    if (_active >= 0 && _active < _sheets.length) {
+      _sheets[_active] = _sheets[_active].copyWith(
+        columns: [..._columns],
+        rows: [for (final r in _rows) [...r]],
+      );
+    }
+  }
+
+  void _loadSheet(int i) {
+    if (i < 0 || i >= _sheets.length) return;
+    _active = i;
+    _columns = [..._sheets[i].columns];
+    _rows = _sheets[i].rows.map((r) => [...r]).toList();
+    _structureKey++;
+  }
+
+  void _switchSheet(int i) {
+    if (i == _active) return;
+    setState(() {
+      _commitActive();
+      _loadSheet(i);
+    });
+  }
 
   /// Pull the grid's current values back into [_rows] (reflects edits + sort).
   void _syncFromGrid() {
@@ -66,8 +98,12 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           );
         }
         if (!_loaded) {
-          _columns = [...table.columns];
-          _rows = table.rows.map((r) => [...r]).toList();
+          _sheets = table.sheets.isNotEmpty
+              ? [...table.sheets]
+              : [const DataSheet(name: 'Sheet 1')];
+          _active = 0;
+          _columns = [..._sheets[0].columns];
+          _rows = _sheets[0].rows.map((r) => [...r]).toList();
           _tableName = table.name;
           _loaded = true;
         }
@@ -133,6 +169,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
                     ? _emptyState()
                     : Padding(padding: const EdgeInsets.all(8), child: _grid()),
               ),
+              const Divider(height: 1, color: AppColors.cardBorder),
+              _sheetTabsBar(),
             ],
           ),
         );
@@ -599,17 +637,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 
   Future<void> _save() async {
-    _syncFromGrid();
+    _commitActive();
     setState(() => _saving = true);
     try {
       final user = ref.read(currentUserProvider).valueOrNull;
-      await ref
-          .read(dataTableServiceProvider)
-          .save(
+      await ref.read(dataTableServiceProvider).save(
             widget.tableId,
             name: _tableName,
-            columns: _columns,
-            rows: _rows,
+            sheets: _sheets,
             userId: user?.id ?? '',
           );
       if (mounted) setState(() => _dirty = false);
@@ -618,6 +653,151 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  // ── Sheet tabs (footer, like Google Sheets) ─────────────────────────────
+  Widget _sheetTabsBar() {
+    return Container(
+      height: 42,
+      color: AppColors.surface,
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              itemCount: _sheets.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 4),
+              itemBuilder: (_, i) {
+                final active = i == _active;
+                return InkWell(
+                  onTap: () => _switchSheet(i),
+                  onLongPress: () => _sheetMenu(i),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: active ? AppColors.brandNavy : AppColors.canvas,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                          color: active
+                              ? AppColors.brandNavy
+                              : AppColors.cardBorder),
+                    ),
+                    child: Text(
+                      _sheets[i].name,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: active ? Colors.white : AppColors.textBody,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: 'Add tab',
+            icon: const Icon(Icons.add, size: 20, color: AppColors.brandNavy),
+            onPressed: _addSheet,
+          ),
+          IconButton(
+            tooltip: 'Tab options (rename / delete)',
+            icon: const Icon(Icons.more_vert,
+                size: 20, color: AppColors.textMuted),
+            onPressed: () => _sheetMenu(_active),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sheetMenu(int i) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: Text('Rename "${_sheets[i].name}"'),
+              onTap: () => Navigator.pop(context, 'rename'),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.delete_outline, color: AppColors.error),
+              title: const Text('Delete tab'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'rename') _renameSheet(i);
+    if (action == 'delete') _deleteSheet(i);
+  }
+
+  Future<void> _addSheet() async {
+    final name = await _prompt('New tab name', hint: 'e.g. July');
+    if (name == null || name.trim().isEmpty) return;
+    setState(() {
+      _commitActive();
+      // New tab inherits the current tab's columns (handy for monthly
+      // attendance where the employee columns repeat), with no rows.
+      final cols = _columns.isNotEmpty ? [..._columns] : <String>['Column 1'];
+      _sheets.add(DataSheet(name: name.trim(), columns: cols, rows: const []));
+      _loadSheet(_sheets.length - 1);
+      _dirty = true;
+    });
+  }
+
+  Future<void> _renameSheet(int i) async {
+    final name = await _prompt('Rename tab', initial: _sheets[i].name);
+    if (name == null || name.trim().isEmpty) return;
+    setState(() {
+      _sheets[i] = _sheets[i].copyWith(name: name.trim());
+      _dirty = true;
+    });
+  }
+
+  Future<void> _deleteSheet(int i) async {
+    if (_sheets.length <= 1) {
+      _snack('A table needs at least one tab.');
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete tab',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Text('Delete "${_sheets[i].name}" and all its rows?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _commitActive();
+      _sheets.removeAt(i);
+      if (_active > i) _active--;
+      if (_active >= _sheets.length) _active = _sheets.length - 1;
+      _loadSheet(_active);
+      _dirty = true;
+    });
   }
 
   Future<void> _exportPdf() async {

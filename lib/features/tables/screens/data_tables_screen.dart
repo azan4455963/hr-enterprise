@@ -93,12 +93,48 @@ class DataTablesScreen extends ConsumerWidget {
 
   Future<void> _create(
       BuildContext context, WidgetRef ref, String userId) async {
-    final name = await _nameDialog(context, title: 'New Table');
-    if (name == null || name.trim().isEmpty) return;
-    final id = await ref
-        .read(dataTableServiceProvider)
-        .create(name: name.trim(), userId: userId);
-    if (context.mounted) context.go('/tables/$id');
+    final type = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('New Table',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: const Text('Choose what to create.'),
+        actionsOverflowDirection: VerticalDirection.down,
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'blank'),
+              child: const Text('Blank table')),
+          PrimaryButton(
+            label: 'Attendance workbook (12 months)',
+            icon: Icons.event_available_rounded,
+            onPressed: () => Navigator.pop(ctx, 'attendance'),
+          ),
+        ],
+      ),
+    );
+    if (type == null) return;
+
+    if (type == 'attendance') {
+      final name = await _nameDialog(context,
+          title: 'New Attendance Workbook',
+          hint: 'Department name — e.g. IT, Billing');
+      if (name == null || name.trim().isEmpty) return;
+      final id = await ref.read(dataTableServiceProvider).createAttendanceWorkbook(
+            name: name.trim(),
+            year: DateTime.now().year,
+            userId: userId,
+          );
+      if (context.mounted) context.go('/tables/$id');
+    } else {
+      final name = await _nameDialog(context, title: 'New Table');
+      if (name == null || name.trim().isEmpty) return;
+      final id = await ref
+          .read(dataTableServiceProvider)
+          .create(name: name.trim(), userId: userId);
+      if (context.mounted) context.go('/tables/$id');
+    }
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, DataTableModel t,
@@ -111,7 +147,9 @@ class DataTablesScreen extends ConsumerWidget {
   }
 
   Future<String?> _nameDialog(BuildContext context,
-      {required String title, String initial = ''}) {
+      {required String title,
+      String initial = '',
+      String hint = 'e.g. June 2026 Attendance'}) {
     final c = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
@@ -122,9 +160,9 @@ class DataTablesScreen extends ConsumerWidget {
         content: TextField(
           controller: c,
           autofocus: true,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Table name',
-            hintText: 'e.g. June 2026 Attendance',
+            hintText: hint,
           ),
         ),
         actions: [
@@ -207,6 +245,7 @@ class _TableCard extends StatelessWidget {
                             color: AppColors.heading)),
                     const SizedBox(height: 2),
                     Text(
+                      '${table.sheets.length > 1 ? "${table.sheets.length} tabs · " : ""}'
                       '${table.columns.length} columns · ${table.rows.length} rows'
                       '${table.updatedAt != null ? " · updated ${DateFormat('dd MMM').format(table.updatedAt!)}" : ""}',
                       style: const TextStyle(

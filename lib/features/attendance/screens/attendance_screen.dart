@@ -13,6 +13,7 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/google_sheets_providers.dart';
 import '../../../providers/service_providers.dart';
+import '../../../providers/table_attendance_providers.dart';
 
 /// Selected department for the sheet-based attendance section.
 final attendanceDeptProvider = StateProvider<String>((ref) => _allDepts);
@@ -59,6 +60,7 @@ class AttendanceScreen extends ConsumerWidget {
             const SizedBox(height: 22),
             _StatRow(ref: ref, isWide: isWide),
             const SizedBox(height: 16),
+            const _TableAttendanceSection(),
             _DeptAttendanceSection(isWide: isWide),
             if (hasEmployee) _MyActions(ref: ref),
             if (hasEmployee) const SizedBox(height: 16),
@@ -604,4 +606,146 @@ class _LeaveList extends StatelessWidget {
       await service.reject(l.id, user.id);
     }
   }
+}
+
+/// ── Today's attendance, department-wise, pulled live from in-app tables ──
+class _TableAttendanceSection extends ConsumerWidget {
+  const _TableAttendanceSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final today = ref.watch(tableAttendanceTodayProvider);
+    if (!today.hasData) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.event_available_rounded,
+                    size: 18, color: AppColors.brandNavy),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Today by Department · ${DateFormat('dd MMM yyyy').format(today.date)}",
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.heading),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text('Live from department attendance tables.',
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            const SizedBox(height: 12),
+            // Header
+            const Row(
+              children: [
+                Expanded(flex: 4, child: _Hdr('DEPARTMENT')),
+                Expanded(flex: 2, child: _Hdr('PRESENT')),
+                Expanded(flex: 2, child: _Hdr('LATE')),
+                Expanded(flex: 2, child: _Hdr('LEAVE')),
+                Expanded(flex: 2, child: _Hdr('ABSENT')),
+              ],
+            ),
+            const Divider(height: 16, color: AppColors.cardBorder),
+            for (final d in today.departments) ...[
+              Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Text(d.department,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.heading)),
+                  ),
+                  Expanded(
+                      flex: 2,
+                      child: Text('${d.present}',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.pillGreenFg))),
+                  Expanded(
+                      flex: 2,
+                      child: Text('${d.late}',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.pillAmberFg))),
+                  Expanded(
+                      flex: 2,
+                      child: Text('${d.leave}',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.pillBlueFg))),
+                  Expanded(
+                      flex: 2,
+                      child: Text('${d.absent}',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.pillRedFg))),
+                ],
+              ),
+              const Divider(height: 18, color: AppColors.cardBorder),
+            ],
+            // Totals
+            Row(
+              children: [
+                const Expanded(
+                    flex: 4,
+                    child: Text('Total',
+                        style: TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.heading))),
+                Expanded(
+                    flex: 2,
+                    child: Text('${today.present}',
+                        style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.pillGreenFg))),
+                Expanded(
+                    flex: 2,
+                    child: Text('${today.late}',
+                        style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.pillAmberFg))),
+                Expanded(
+                    flex: 2,
+                    child: Text('${today.leave}',
+                        style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.pillBlueFg))),
+                Expanded(
+                    flex: 2,
+                    child: Text('${today.absent}',
+                        style: const TextStyle(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.pillRedFg))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Hdr extends StatelessWidget {
+  const _Hdr(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          color: AppColors.textMuted));
 }

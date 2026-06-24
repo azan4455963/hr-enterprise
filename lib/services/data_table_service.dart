@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import '../models/data_table_model.dart';
 import 'audit_service.dart';
 
-/// CRUD for custom in-app data tables (`data_tables`).
+/// CRUD for custom in-app data tables (`data_tables`). A table is a workbook of
+/// one or more [DataSheet] tabs.
 class DataTableService {
   DataTableService({FirebaseFirestore? firestore, AuditService? audit})
       : _firestore = firestore ?? FirebaseFirestore.instance,
@@ -28,15 +30,16 @@ class DataTableService {
         (d) => d.exists ? DataTableModel.fromMap(d.data()!, d.id) : null);
   }
 
+  /// Plain table with a single empty sheet.
   Future<String> create({
     required String name,
     required String userId,
     List<String> columns = const ['Column 1'],
   }) async {
+    final sheet = DataSheet(name: 'Sheet 1', columns: columns, rows: const []);
     final ref = await _ref.add({
       'name': name.trim(),
-      'columns': columns,
-      'rows': <Map<String, dynamic>>[],
+      'sheets': [sheet.toMap()],
       'createdBy': userId,
       'createdAt': DateTime.now(),
       'updatedAt': DateTime.now(),
@@ -51,20 +54,57 @@ class DataTableService {
     return ref.id;
   }
 
-  /// Save the whole table (columns + rows). Optionally also renames it.
+  /// Attendance workbook: 12 month tabs (Jan–Dec of [year]); each tab is a
+  /// matrix pre-filled with that month's dates (col A) and day names (col B).
+  /// The user then adds employee columns and fills the status cells.
+  Future<String> createAttendanceWorkbook({
+    required String name,
+    required int year,
+    required String userId,
+  }) async {
+    final dateFmt = DateFormat('dd-MMM-yyyy');
+    final dayFmt = DateFormat('EEEE');
+    final sheets = <Map<String, dynamic>>[];
+    for (var m = 1; m <= 12; m++) {
+      final daysInMonth = DateTime(year, m + 1, 0).day;
+      final rows = <List<String>>[];
+      for (var d = 1; d <= daysInMonth; d++) {
+        final date = DateTime(year, m, d);
+        rows.add([dateFmt.format(date), dayFmt.format(date)]);
+      }
+      sheets.add(DataSheet(
+        name: DateFormat('MMMM').format(DateTime(year, m)),
+        columns: const ['Date', 'Working Days'],
+        rows: rows,
+      ).toMap());
+    }
+    final ref = await _ref.add({
+      'name': name.trim(),
+      'sheets': sheets,
+      'createdBy': userId,
+      'createdAt': DateTime.now(),
+      'updatedAt': DateTime.now(),
+    });
+    await _audit.log(
+      userId: userId,
+      action: 'create',
+      module: 'tables',
+      targetId: ref.id,
+      details: {'name': name, 'type': 'attendance', 'year': year},
+    );
+    return ref.id;
+  }
+
+  /// Save the whole workbook (all tabs). Optionally also renames it.
   Future<void> save(
     String id, {
     String? name,
-    required List<String> columns,
-    required List<List<String>> rows,
+    required List<DataSheet> sheets,
     required String userId,
   }) async {
     await _ref.doc(id).update({
       if (name != null) 'name': name.trim(),
-      'columns': columns,
-      'rows': [
-        for (final r in rows) {'cells': r},
-      ],
+      'sheets': [for (final s in sheets) s.toMap()],
       'updatedAt': DateTime.now(),
     });
     await _audit.log(
@@ -77,7 +117,9 @@ class DataTableService {
 
   Future<void> rename(String id,
       {required String name, required String userId}) async {
-    await _ref.doc(id).update({'name': name.trim(), 'updatedAt': DateTime.now()});
+    await _ref
+        .doc(id)
+        .update({'name': name.trim(), 'updatedAt': DateTime.now()});
     await _audit.log(
       userId: userId,
       action: 'update',
