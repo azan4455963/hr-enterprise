@@ -269,7 +269,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           field: _field(i),
           type: PlutoColumnType.text(),
           width: 150,
-          enableColumnDrag: false,
+          // Drag a column header to reorder it (first / middle / last).
+          enableColumnDrag: true,
           enableRowDrag: false,
           enableContextMenu: true,
           enableSorting: false,
@@ -300,6 +301,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         _sm = e.stateManager;
         e.stateManager.setSelectingMode(PlutoGridSelectingMode.cell);
       },
+      onColumnsMoved: (_) => _applyColumnOrder(),
       onChanged: (e) {
         if (!_dirty) setState(() => _dirty = true);
       },
@@ -427,7 +429,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   Future<void> _confirmDeleteRow(PlutoColumnRendererContext ctx) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
@@ -437,11 +439,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         content: Text('Remove row ${ctx.rowIdx + 1}? This cannot be undone.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogCtx, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogCtx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.error),
             child: const Text('Delete'),
           ),
@@ -511,6 +513,33 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         _fillDayDateTime(row);
         _rows.add(row);
       }
+      _dirty = true;
+      _structureKey++;
+    });
+  }
+
+  /// After a column header is dragged, persist the new visual order into
+  /// [_columns] and [_rows] so it survives a rebuild and is saved.
+  void _applyColumnOrder() {
+    final sm = _sm;
+    if (sm == null) return;
+    _syncFromGrid(); // capture edits in the current order first
+
+    // New data-column order (skip the frozen '#'/actions column). Each field
+    // is 'cN' where N is the index into the *current* _columns list.
+    final newOrder = <int>[
+      for (final col in sm.columns)
+        if (col.field != 'actions') int.parse(col.field.substring(1)),
+    ];
+    // Guard against anything unexpected.
+    if (newOrder.length != _columns.length) return;
+
+    setState(() {
+      _columns = [for (final i in newOrder) _columns[i]];
+      _rows = [
+        for (final r in _rows)
+          [for (final i in newOrder) (i < r.length ? r[i] : '')],
+      ];
       _dirty = true;
       _structureKey++;
     });
