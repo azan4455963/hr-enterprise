@@ -425,27 +425,39 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     });
   }
 
-  /// Show Yes/No confirmation before removing a row.
+  /// Show a Yes/No confirmation (a popup over the table — it never leaves the
+  /// editor) before removing a row.
   Future<void> _confirmDeleteRow(PlutoColumnRendererContext ctx) async {
     final confirmed = await showDialog<bool>(
       context: context,
+      barrierDismissible: true,
       builder: (dialogCtx) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.delete_outline_rounded,
+            color: AppColors.error, size: 32),
         title: const Text(
-          'Delete Row',
+          'Delete this row?',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        content: Text('Remove row ${ctx.rowIdx + 1}? This cannot be undone.'),
+        content: Text(
+          'Are you sure you want to delete row ${ctx.rowIdx + 1}? '
+          'This cannot be undone.',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
         actions: [
-          TextButton(
+          OutlinedButton(
             onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('Cancel'),
+            child: const Text('No'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () => Navigator.pop(dialogCtx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Yes, delete'),
           ),
         ],
       ),
@@ -453,6 +465,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     if (confirmed != true) return;
     ctx.stateManager.removeRows([ctx.row]);
     setState(() => _dirty = true);
+    _snack('Row deleted.');
   }
 
   /// Select all cells in the grid (Ctrl+C then copies the selection).
