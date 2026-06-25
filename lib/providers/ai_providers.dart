@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 
 import '../models/ai_assistant_model.dart';
+import '../models/employee_model.dart';
 import '../services/ai_assistant_service.dart';
 import 'data_providers.dart';
 import 'data_table_providers.dart';
@@ -137,3 +138,77 @@ final aiDataContextProvider = FutureProvider<String>((ref) async {
 
   return buf.toString();
 });
+
+/// If the question names a known employee, return a focused dossier (all of
+/// that person's data) so the AI answers precisely; else null.
+Future<({String name, String dossier})?> employeeFocusedDossier(
+    WidgetRef ref, String question) async {
+  final q = question.toLowerCase();
+  final employees = await ref.read(employeesProvider.future);
+  EmployeeModel? match;
+  for (final e in employees) {
+    final full = e.fullName.toLowerCase();
+    final first = e.firstName.toLowerCase();
+    if (full.isNotEmpty && q.contains(full)) {
+      match = e;
+      break;
+    }
+    if (first.length > 2 && q.contains(first)) match ??= e;
+  }
+  if (match == null) return null;
+
+  final id = match.id;
+  final dayFmt = DateFormat('dd-MMM-yyyy');
+  final att = await ref.read(employeeAttendanceHistoryProvider(id).future);
+  final leaves = await ref.read(employeeLeaveHistoryProvider(id).future);
+  final pay = await ref.read(employeePayrollHistoryProvider(id).future);
+  final records = await ref.read(employeeRecordsProvider(id).future);
+  final docs = await ref.read(employeeDocumentsProvider(id).future);
+
+  final b = StringBuffer();
+  b.writeln('=== EMPLOYEE DOSSIER: ${match.fullName} ===');
+  b.writeln('Department: ${match.departmentName ?? "-"} | Role: '
+      '${match.position ?? "-"} | Status: ${match.status.name} '
+      '| Email: ${match.email} | Phone: ${match.phone ?? "-"} '
+      '| CNIC: ${match.cnic ?? "-"} '
+      '| Joined: ${match.joiningDate != null ? dayFmt.format(match.joiningDate!) : "-"} '
+      '| Salary: ${match.salary?.toStringAsFixed(0) ?? "-"}');
+
+  b.writeln('\n--- Attendance (recent) ---');
+  for (final a in att.take(30)) {
+    b.writeln('${dayFmt.format(a.date)}: ${a.status.name}');
+  }
+
+  b.writeln('\n--- Leave (${leaves.length}) ---');
+  for (final l in leaves.take(30)) {
+    b.writeln('${l.leaveType.name} ${l.days}d '
+        '${dayFmt.format(l.startDate)}->${dayFmt.format(l.endDate)} '
+        '[${l.status.name}]');
+  }
+
+  b.writeln('\n--- Payroll (${pay.length}) ---');
+  for (final p in pay.take(24)) {
+    b.writeln('${p.month}/${p.year}: net ${p.calculatedNet.toStringAsFixed(0)} '
+        '(base ${p.baseSalary.toStringAsFixed(0)}, bonus ${p.bonuses.toStringAsFixed(0)}) '
+        '[${p.status.name}]');
+  }
+
+  if (records.isNotEmpty) {
+    b.writeln('\n--- Records (${records.length}) ---');
+    for (final r in records.take(40)) {
+      final fields = r.fields.map((f) => '${f.label}: ${f.value}').join('; ');
+      b.writeln('[${r.category}] ${r.title}'
+          '${fields.isNotEmpty ? " - $fields" : ""}'
+          '${(r.note?.isNotEmpty ?? false) ? " (${r.note})" : ""}');
+    }
+  }
+
+  if (docs.isNotEmpty) {
+    b.writeln('\n--- Documents (${docs.length}) ---');
+    for (final d in docs.take(40)) {
+      b.writeln('${d.name} [${d.category}]');
+    }
+  }
+
+  return (name: match.fullName, dossier: b.toString());
+}

@@ -180,6 +180,37 @@ class AttendanceService {
     }
   }
 
+  /// Admin/assistant: set today's attendance for a specific employee
+  /// (creates or updates today's record).
+  Future<void> markToday({
+    required String employeeId,
+    String? employeeName,
+    required AttendanceStatus status,
+  }) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final atWork =
+        status == AttendanceStatus.present || status == AttendanceStatus.late;
+    final docRef = await _attendance.findTodayRecord(employeeId);
+    if (docRef != null) {
+      await _attendance.updateRecord(docRef.id, data: {
+        'status': status.name,
+        'timestamp': Timestamp.fromDate(now),
+        if (atWork) 'checkIn': Timestamp.fromDate(now),
+      });
+    } else {
+      await _attendance.createRecord(
+        employeeId: employeeId,
+        status: status.name,
+        timestamp: now,
+        method: 'manual',
+        employeeName: employeeName,
+        date: today,
+        checkIn: atWork ? now : null,
+      );
+    }
+  }
+
   Future<({int present, int absent, int late, int totalEmployees})> getTodayStats(
     int totalEmployees,
   ) async {

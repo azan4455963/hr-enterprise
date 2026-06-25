@@ -1,10 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/ai_assistant_model.dart';
+import '../../../models/attendance_model.dart';
+import '../../../models/leave_model.dart';
 import '../../../providers/ai_providers.dart';
+import '../../../providers/data_providers.dart';
+import '../../../providers/service_providers.dart';
 
 /// Slide-in AI assistant chat panel (left side). Shows a setup form until the
 /// user has saved an API key, then a chat that can answer questions about all
@@ -374,18 +381,28 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     });
     _scrollToEnd();
     try {
-      final context = await ref.read(aiDataContextProvider.future);
-      final system = _systemPrompt(context);
+      // Focused context: if the question names a person, send just their
+      // dossier (accurate + cheap); else the full snapshot.
+      final focused = await employeeFocusedDossier(ref, text);
+      final data = focused != null
+          ? focused.dossier
+          : await ref.read(aiDataContextProvider.future);
       final reply = await ref.read(aiAssistantServiceProvider).chat(
             config: widget.config,
-            systemPrompt: system,
+            systemPrompt: _systemPrompt(data),
             messages: _messages,
           );
       if (!mounted) return;
-      setState(() => _messages.add(
-          AiChatMessage(role: 'assistant', content: reply.isEmpty
-              ? '(empty response)'
-              : reply)));
+
+      // Did the AI request an action? If so, confirm + execute.
+      final action = _parseAction(reply);
+      if (action != null) {
+        await _handleAction(action);
+      } else {
+        setState(() => _messages.add(AiChatMessage(
+            role: 'assistant',
+            content: reply.isEmpty ? '(empty response)' : reply)));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _messages
@@ -401,7 +418,127 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         "user's questions using ONLY the HR data snapshot below. Be concise and "
         'specific; use names and numbers from the data. If the answer is not in '
         'the data, say you could not find it. Do not invent records.\n\n'
+        'ACTIONS: You can perform two actions when the user clearly asks for '
+        'them. To do so, reply with ONLY a fenced code block (no other text):\n'
+        '```hr-action\n'
+        '{"action":"mark_attendance","employee":"<full name>","status":"present|absent|leave|late"}\n'
+        '```\n'
+        'or\n'
+        '```hr-action\n'
+        '{"action":"create_leave","employee":"<full name>","type":"sick|casual|annual|unpaid|other","from":"YYYY-MM-DD","to":"YYYY-MM-DD","reason":"<short reason>"}\n'
+        '```\n'
+        'The app will ask the user to confirm before doing anything. For all '
+        'other questions, answer normally (no action block).\n\n'
         '--- HR DATA SNAPSHOT ---\n$data\n--- END DATA ---';
+  }
+
+  /// Extract an `{"action": ...}` object from the AI reply, if present.
+  Map<String, dynamic>? _parseAction(String reply) {
+    final start = reply.indexOf('{');
+    final end = reply.lastIndexOf('}');
+    if (start < 0 || end <= start) return null;
+    try {
+      final obj = jsonDecode(reply.substring(start, end + 1));
+      if (obj is Map<String, dynamic> && obj['action'] is String) return obj;
+    } catch (_) {/* not an action */}
+    return null;
+  }
+
+  Future<void> _handleAction(Map<String, dynamic> action) async {
+    final type = action['action'] as String;
+    final empName = (action['employee'] as String?)?.trim() ?? '';
+    final employees = await ref.read(employeesProvider.future);
+    final matches = employees.where((e) {
+      final n = e.fullName.toLowerCase();
+      return n == empName.toLowerCase() ||
+          n.contains(empName.toLowerCase()) ||
+          empName.toLowerCase().contains(n);
+    }).toList();
+    final emp = matches.isEmpty ? null : matches.first;
+
+    if (emp == null) {
+      _assistantSay('I could not find an employee named "$empName".');
+      return;
+    }
+
+    String summary;
+    Future<void> Function() exec;
+    if (type == 'mark_attendance') {
+      final statusStr = (action['status'] as String? ?? 'present').toLowerCase();
+      final status = AttendanceStatus.values.firstWhere(
+        (s) => s.name == statusStr,
+        orElse: () => AttendanceStatus.present,
+      );
+      summary = 'Mark ${emp.fullName} as ${status.name} for today?';
+      exec = () => ref.read(attendanceServiceProvider).markToday(
+            employeeId: emp.id,
+            employeeName: emp.fullName,
+            status: status,
+          );
+    } else if (type == 'create_leave') {
+      final typeStr = (action['type'] as String? ?? 'annual').toLowerCase();
+      final lType = LeaveType.values.firstWhere(
+        (t) => t.name == typeStr,
+        orElse: () => LeaveType.annual,
+      );
+      final from = DateTime.tryParse(action['from'] as String? ?? '') ??
+          DateTime.now();
+      final to =
+          DateTime.tryParse(action['to'] as String? ?? '') ?? from;
+      final reason = action['reason'] as String?;
+      summary =
+          'Create a ${lType.name} leave for ${emp.fullName} from '
+          '${DateFormat('dd MMM').format(from)} to ${DateFormat('dd MMM').format(to)}?';
+      exec = () => ref.read(leaveServiceProvider).createRequest(LeaveRequestModel(
+            id: '',
+            employeeId: emp.id,
+            employeeName: emp.fullName,
+            startDate: from,
+            endDate: to,
+            leaveType: lType,
+            reason: reason,
+          )).then((_) {});
+    } else {
+      _assistantSay('Unknown action "$type".');
+      return;
+    }
+
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.bolt_rounded, color: AppColors.brandBlue),
+        title: const Text('Confirm action',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Text(summary),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          PrimaryButton(
+              label: 'Confirm', onPressed: () => Navigator.pop(ctx, true)),
+        ],
+      ),
+    );
+
+    if (ok != true) {
+      _assistantSay('Okay, cancelled — nothing was changed.');
+      return;
+    }
+    try {
+      await exec();
+      _assistantSay('✓ Done. $summary'.replaceFirst('?', ''));
+    } catch (e) {
+      _assistantSay('⚠️ Could not complete the action: $e');
+    }
+  }
+
+  void _assistantSay(String text) {
+    if (!mounted) return;
+    setState(() =>
+        _messages.add(AiChatMessage(role: 'assistant', content: text)));
   }
 
   void _scrollToEnd() {
