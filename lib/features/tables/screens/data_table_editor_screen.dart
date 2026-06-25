@@ -39,6 +39,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   String _tableName = 'Table';
   PlutoGridStateManager? _sm;
   Timer? _autoSave;
+  bool _showTotals = false;
 
   @override
   void initState() {
@@ -221,6 +222,16 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
             onPressed: _columns.isEmpty ? () {} : _fillMonthDates,
           ),
           GhostButton(
+            label: _showTotals ? 'Hide Totals' : 'Totals',
+            icon: Icons.functions_rounded,
+            onPressed: _columns.isEmpty
+                ? () {}
+                : () => setState(() {
+                      _showTotals = !_showTotals;
+                      _structureKey++;
+                    }),
+          ),
+          GhostButton(
             label: 'Select All',
             icon: Icons.select_all_rounded,
             onPressed: _columns.isEmpty ? () {} : _selectAll,
@@ -326,6 +337,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           enableSorting: false,
           enableDropToResize: true,
           renderer: _statusRenderer,
+          footerRenderer: _showTotals ? _columnFooter : null,
         ),
     ];
     final rows = <PlutoRow>[
@@ -400,6 +412,37 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         v,
         style: TextStyle(color: sc.fg, fontWeight: FontWeight.w600),
         overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  /// Column footer: sum of numeric columns, else count of filled cells.
+  Widget _columnFooter(PlutoColumnFooterRendererContext ctx) {
+    final field = ctx.column.field;
+    num sum = 0;
+    var numeric = 0, filled = 0;
+    for (final row in ctx.stateManager.refRows) {
+      final v = row.cells[field]?.value?.toString().trim() ?? '';
+      if (v.isEmpty || v == '-') continue;
+      filled++;
+      final n = num.tryParse(v.replaceAll(',', ''));
+      if (n != null) {
+        sum += n;
+        numeric++;
+      }
+    }
+    final isNumeric = numeric > 0 && numeric >= filled * 0.5;
+    final sumLabel =
+        sum % 1 == 0 ? sum.toInt().toString() : sum.toStringAsFixed(2);
+    return Container(
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Text(
+        isNumeric ? 'Σ $sumLabel' : '$filled filled',
+        style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: AppColors.brandNavy),
       ),
     );
   }
