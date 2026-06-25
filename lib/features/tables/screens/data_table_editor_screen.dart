@@ -209,6 +209,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
             onPressed: _columns.isEmpty ? () {} : () => _addRows(10),
           ),
           GhostButton(
+            label: 'Fill Dates',
+            icon: Icons.event_note_rounded,
+            onPressed: _columns.isEmpty ? () {} : _fillMonthDates,
+          ),
+          GhostButton(
             label: 'Select All',
             icon: Icons.select_all_rounded,
             onPressed: _columns.isEmpty ? () {} : _selectAll,
@@ -567,6 +572,69 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       _dirty = true;
       _structureKey++;
     });
+  }
+
+  static const _monthNumbers = {
+    'january': 1, 'february': 2, 'march': 3, 'april': 4, 'may': 5,
+    'june': 6, 'july': 7, 'august': 8, 'september': 9, 'october': 10,
+    'november': 11, 'december': 12,
+  };
+
+  /// Fill the active tab's "Date" + "Working Days" columns with every date of
+  /// the month (detected from the tab name, else current month). Adds rows as
+  /// needed and preserves other columns' values. One-click for any tab.
+  Future<void> _fillMonthDates() async {
+    int dateIdx = -1, dayIdx = -1;
+    for (var i = 0; i < _columns.length; i++) {
+      final h = _columns[i].trim().toLowerCase();
+      if (dateIdx < 0 && h == 'date') dateIdx = i;
+      if (dayIdx < 0 &&
+          (h == 'working days' || h == 'day' || h == 'days' || h == 'working day')) {
+        dayIdx = i;
+      }
+    }
+    if (dateIdx < 0) {
+      _snack('No "Date" column found. Add a column named "Date" first '
+          '(or create an Attendance workbook).');
+      return;
+    }
+
+    // Month from tab name, else current month.
+    final tabName = _sheets.isNotEmpty && _active < _sheets.length
+        ? _sheets[_active].name.trim().toLowerCase()
+        : '';
+    final now = DateTime.now();
+    int month = now.month;
+    _monthNumbers.forEach((k, v) {
+      if (tabName.contains(k)) month = v;
+    });
+
+    final yearStr = await _prompt('Fill dates — which year?',
+        initial: '${now.year}', hint: 'e.g. ${now.year}');
+    if (yearStr == null) return;
+    final year = int.tryParse(yearStr.trim()) ?? now.year;
+
+    final days = DateTime(year, month + 1, 0).day;
+    final dateFmt = DateFormat('dd-MMM-yyyy');
+    final dayFmt = DateFormat('EEEE');
+    _syncFromGrid();
+    setState(() {
+      for (var d = 1; d <= days; d++) {
+        if (d - 1 >= _rows.length) {
+          _rows.add(List<String>.filled(_columns.length, ''));
+        }
+        final row = _rows[d - 1];
+        while (row.length < _columns.length) {
+          row.add('');
+        }
+        final date = DateTime(year, month, d);
+        row[dateIdx] = dateFmt.format(date);
+        if (dayIdx >= 0) row[dayIdx] = dayFmt.format(date);
+      }
+      _dirty = true;
+      _structureKey++;
+    });
+    _snack('Filled $days dates. Press Save to keep them.');
   }
 
   /// After a column header is dragged, persist the new visual order into
