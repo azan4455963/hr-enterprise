@@ -34,30 +34,22 @@
 </head>
 <body>
   <script>
-    // Always load the freshest build. Flutter's service worker is known to
-    // serve a stale main.dart.js after a new deploy, so we unregister any
-    // existing worker and clear its caches, then load Flutter WITHOUT
-    // registering a new one (see _flutter.loader.load() below — no
-    // serviceWorker setting is passed). Combined with the no-cache headers in
-    // firebase.json, every visit gets the latest code.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function (regs) {
-        regs.forEach(function (reg) { reg.unregister(); });
-      }).catch(function () {});
-    }
-    if (window.caches && caches.keys) {
-      caches.keys().then(function (keys) {
-        keys.forEach(function (key) { caches.delete(key); });
-      }).catch(function () {});
-    }
-  </script>
-
-  <script>
     {{flutter_js}}
     {{flutter_build_config}}
 
-    // No serviceWorkerSettings => Flutter does not register a service worker.
+    // Load Flutter WITHOUT its own (stale-prone) service worker.
     _flutter.loader.load();
+  </script>
+
+  <script>
+    // Register a tiny network-first service worker. This makes the app
+    // installable as a PWA (Install button in Chrome/Edge) while never serving
+    // a stale build — every request hits the network first.
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('flutter_pwa_sw.js').catch(function () {});
+      });
+    }
   </script>
 </body>
 </html>

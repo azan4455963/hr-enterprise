@@ -39,6 +39,12 @@
         ]
       },
       {
+        "source": "/flutter_pwa_sw.js",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
+      },
+      {
         "source": "**/@(main.dart.js|flutter.js|version.json|manifest.json)",
         "headers": [
           { "key": "Cache-Control", "value": "no-cache" }

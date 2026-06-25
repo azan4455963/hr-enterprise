@@ -1,12 +1,11 @@
 {
-    "name": "hr_enterprise",
-    "short_name": "hr_enterprise",
+    "name": "HR Enterprise",
+    "short_name": "HR Enterprise",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#1E3A8A",
+    "theme_color": "#1E3A8A",
+    "description": "Enterprise HR & Employee Management System",
     "prefer_related_applications": false,
     "icons": [
         {
