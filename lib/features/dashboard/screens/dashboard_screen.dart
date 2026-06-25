@@ -429,7 +429,13 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final employeeCount = ref.watch(employeeCountProvider);
+    // Actual employee records (by id) — used for the Total Employees box.
+    final employeesList = ref.watch(employeesProvider);
+    final totalEmployees = employeesList.when(
+      data: (l) => '${l.length}',
+      loading: () => '…',
+      error: (_, _) => '—',
+    );
     final stats = ref.watch(attendanceStatsProvider);
     final pendingLeave = ref.watch(pendingLeaveProvider);
     // When an attendance sheet is attached, its figures take priority.
@@ -493,13 +499,9 @@ class _StatRow extends StatelessWidget {
       cards: [
         StatCard(
           label: 'Total Employees',
-          value: (!hasTableAtt && sheetAtt != null)
-              ? '${sheetAtt.headcount}'
-              : fromInt(employeeCount),
+          value: totalEmployees,
           icon: Icons.groups_rounded,
-          footer: (!hasTableAtt && sheetAtt != null)
-              ? sheetFooter
-              : (canViewEmployees ? 'View details →' : 'Active workforce'),
+          footer: canViewEmployees ? 'View details →' : 'Active workforce',
           onTap: canViewEmployees
               ? () => context.go('/employee-overview')
               : null,

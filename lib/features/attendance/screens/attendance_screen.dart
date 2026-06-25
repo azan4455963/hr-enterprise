@@ -115,17 +115,24 @@ class _StatRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final today = ref.watch(todayAttendanceProvider);
     final pendingLeave = ref.watch(pendingLeaveProvider);
+    // In-app attendance tables take priority for today's figures.
+    final tableAtt = ref.watch(tableAttendanceTodayProvider);
+    final hasTableAtt = tableAtt.hasData;
 
     final list = today.valueOrNull ?? const <AttendanceModel>[];
-    final present = list
-        .where((a) =>
-            a.status == AttendanceStatus.present ||
-            a.status == AttendanceStatus.late)
-        .length;
-    final late =
-        list.where((a) => a.status == AttendanceStatus.late).length;
-    final onLeave =
-        list.where((a) => a.status == AttendanceStatus.onLeave).length;
+    final present = hasTableAtt
+        ? tableAtt.present
+        : list
+            .where((a) =>
+                a.status == AttendanceStatus.present ||
+                a.status == AttendanceStatus.late)
+            .length;
+    final late = hasTableAtt
+        ? tableAtt.late
+        : list.where((a) => a.status == AttendanceStatus.late).length;
+    final onLeave = hasTableAtt
+        ? tableAtt.leave
+        : list.where((a) => a.status == AttendanceStatus.onLeave).length;
     final pending = pendingLeave.valueOrNull?.length ?? 0;
 
     return StatCardRow(
