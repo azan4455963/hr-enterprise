@@ -25,6 +25,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Restore Firebase secrets file (gitignored)
+        env:
+          FIREBASE_SECRETS_DART: ${{ secrets.FIREBASE_SECRETS_DART }}
+        run: printf '%s' "$FIREBASE_SECRETS_DART" > lib/firebase_secrets.dart
+
       - name: Build web
         run: flutter build web --release
 
