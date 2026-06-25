@@ -10,6 +10,7 @@ import '../services/auth_service.dart';
 import '../services/biometric_service.dart';
 import '../services/company_settings_service.dart';
 import '../services/department_service.dart';
+import '../services/employee_document_service.dart';
 import '../services/employee_record_service.dart';
 import '../services/employee_service.dart';
 import '../services/employee_user_link_service.dart';
@@ -58,6 +59,9 @@ final employeeServiceProvider = Provider<EmployeeService>((ref) {
 
 final employeeRecordServiceProvider =
     Provider<EmployeeRecordService>((ref) => EmployeeRecordService());
+
+final employeeDocumentServiceProvider =
+    Provider<EmployeeDocumentService>((ref) => EmployeeDocumentService());
 
 final attendanceServiceProvider = Provider<AttendanceService>((ref) {
   return AttendanceService(

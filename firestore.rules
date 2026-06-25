@@ -87,6 +87,13 @@ service cloud.firestore {
         );
         allow create, update, delete: if isSignedIn() && hasPerm('employees_edit');
       }
+
+      // Uploaded files (CNIC, contracts, certificates). Admins/directors read;
+      // writes need employees_edit.
+      match /documents/{docId} {
+        allow read: if isSignedIn() && hasPerm('employees_view');
+        allow create, update, delete: if isSignedIn() && hasPerm('employees_edit');
+      }
     }
 
     function hasLinkedEmployee() {

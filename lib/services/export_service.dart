@@ -47,6 +47,181 @@ class ExportService {
     );
   }
 
+  /// Monthly salary slip for one employee, built from a payroll record.
+  Future<Uint8List> buildPayslipPdf({
+    required EmployeeModel employee,
+    required PayrollModel payroll,
+    required String companyName,
+  }) async {
+    final doc = pw.Document();
+    final monthName =
+        DateFormat('MMMM yyyy').format(DateTime(payroll.year, payroll.month));
+    final earnings = payroll.baseSalary + payroll.overtime + payroll.bonuses;
+
+    pw.Widget money(String label, double v, {bool bold = false}) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          child: pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(label,
+                  style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight:
+                          bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+              pw.Text('Rs ${NumberFormat('#,##0').format(v)}',
+                  style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight:
+                          bold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+            ],
+          ),
+        );
+
+    doc.addPage(
+      pw.Page(
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(16),
+              color: PdfColors.indigo50,
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(companyName,
+                      style: pw.TextStyle(
+                          fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                  pw.SizedBox(height: 2),
+                  pw.Text('SALARY SLIP — $monthName',
+                      style:
+                          pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(employee.fullName,
+                        style: pw.TextStyle(
+                            fontSize: 14, fontWeight: pw.FontWeight.bold)),
+                    pw.Text(
+                      '${employee.position ?? "-"}  •  ${employee.departmentName ?? "-"}',
+                      style:
+                          pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(
+                      'Emp ID: ${employee.id.length >= 6 ? employee.id.substring(0, 6).toUpperCase() : employee.id.toUpperCase()}',
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                    pw.Text('Pay period: $monthName',
+                        style: const pw.TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Expanded(
+                  child: pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400),
+                        borderRadius: pw.BorderRadius.circular(6)),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('EARNINGS',
+                            style: pw.TextStyle(
+                                fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Divider(),
+                        money('Basic Salary', payroll.baseSalary),
+                        money('Overtime', payroll.overtime),
+                        money('Bonuses', payroll.bonuses),
+                        pw.Divider(),
+                        money('Total Earnings', earnings, bold: true),
+                      ],
+                    ),
+                  ),
+                ),
+                pw.SizedBox(width: 12),
+                pw.Expanded(
+                  child: pw.Container(
+                    padding: const pw.EdgeInsets.all(12),
+                    decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400),
+                        borderRadius: pw.BorderRadius.circular(6)),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('DEDUCTIONS',
+                            style: pw.TextStyle(
+                                fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                        pw.Divider(),
+                        money('Deductions', payroll.deductions),
+                        pw.Divider(),
+                        money('Total Deductions', payroll.deductions,
+                            bold: true),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(14),
+              decoration: pw.BoxDecoration(
+                  color: PdfColors.indigo,
+                  borderRadius: pw.BorderRadius.circular(8)),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('NET PAY',
+                      style: pw.TextStyle(
+                          fontSize: 13,
+                          color: PdfColors.white,
+                          fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                      'Rs ${NumberFormat('#,##0').format(payroll.calculatedNet)}',
+                      style: pw.TextStyle(
+                          fontSize: 16,
+                          color: PdfColors.white,
+                          fontWeight: pw.FontWeight.bold)),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 10),
+            pw.Text(
+              'Payment status: ${payroll.status.name.toUpperCase()}'
+              '${payroll.paidAt != null ? "  •  Paid on ${_dayFormat.format(payroll.paidAt!)}" : ""}',
+              style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            ),
+            pw.Spacer(),
+            pw.Divider(),
+            pw.Text(
+              'System-generated payslip. Generated ${_dateFormat.format(DateTime.now())}.',
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
+          ],
+        ),
+      ),
+    );
+    return doc.save();
+  }
+
   /// Full single-employee profile report: details, attendance, leave & payroll.
   Future<Uint8List> buildEmployeeProfilePdf({
     required EmployeeModel employee,

@@ -1,13 +1,17 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
+import '../../../models/employee_document_model.dart';
 import '../../../models/employee_model.dart';
 import '../../../models/employee_record_model.dart';
 import '../../../models/leave_model.dart';
@@ -51,7 +55,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
           );
         }
         return DefaultTabController(
-          length: 8,
+          length: 9,
           child: Scaffold(
             backgroundColor: AppColors.canvas,
             appBar: AppBar(
@@ -105,6 +109,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
                 tabs: [
                   Tab(text: 'Overview'),
                   Tab(text: 'Records'),
+                  Tab(text: 'Documents'),
                   Tab(text: 'Timeline'),
                   Tab(text: 'Attendance'),
                   Tab(text: 'Leave'),
@@ -118,6 +123,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
               children: [
                 _OverviewTab(emp: emp, canViewSalary: canViewSalary),
                 _RecordsTab(employeeId: employeeId),
+                _DocumentsTab(employeeId: employeeId),
                 _TimelineTab(employeeId: employeeId, emp: emp),
                 _AttendanceTab(employeeId: employeeId),
                 _LeaveTab(employeeId: employeeId),
@@ -679,9 +685,37 @@ class _PayrollTab extends ConsumerWidget {
           children: [
             _sectionCard('Salary — Monthly', [
               for (final p in newToOld)
-                _lineRow(
-                  DateFormat('MMM yyyy').format(DateTime(p.year, p.month)),
-                  'Net ${_fmtMoney(p.calculatedNet)}  ·  Base ${_fmtMoney(p.baseSalary)}',
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          DateFormat('MMM yyyy')
+                              .format(DateTime(p.year, p.month)),
+                          style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.heading),
+                        ),
+                      ),
+                      Text(
+                        'Net ${_fmtMoney(p.calculatedNet)}',
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textBody),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Payslip PDF',
+                        icon: const Icon(Icons.receipt_long_outlined,
+                            size: 18, color: AppColors.brandNavy),
+                        onPressed: () => _downloadPayslip(ref, p),
+                      ),
+                    ],
+                  ),
                 ),
             ]),
             _sectionCard('Bonuses', [
@@ -718,6 +752,22 @@ class _PayrollTab extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  Future<void> _downloadPayslip(WidgetRef ref, PayrollModel p) async {
+    final emp = ref.read(employeeByIdProvider(employeeId)).valueOrNull;
+    if (emp == null) return;
+    final company = ref.read(companySettingsProvider).valueOrNull?.companyName ??
+        'HR Enterprise';
+    final export = ref.read(exportServiceProvider);
+    await Printing.layoutPdf(
+      name: '${emp.fullName}_${p.month}-${p.year}_payslip',
+      onLayout: (_) => export.buildPayslipPdf(
+        employee: emp,
+        payroll: p,
+        companyName: company,
+      ),
     );
   }
 }
@@ -1102,6 +1152,176 @@ class _ErrorOrEmpty extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// ── Documents tab (files in Firebase Storage under this employee) ────────
+class _DocumentsTab extends ConsumerWidget {
+  const _DocumentsTab({required this.employeeId});
+  final String employeeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final docsAsync = ref.watch(employeeDocumentsProvider(employeeId));
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final canEdit = user?.hasPermission('employees_edit') ?? false;
+
+    return docsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => _ErrorOrEmpty(message: 'Could not load documents.\n$e'),
+      data: (docs) {
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (canEdit)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PrimaryButton(
+                  label: 'Upload File',
+                  icon: Icons.upload_file_rounded,
+                  onPressed: () => _upload(context, ref),
+                ),
+              ),
+            const SizedBox(height: 14),
+            if (docs.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 30),
+                child: _ErrorOrEmpty(
+                  message: 'No documents yet.\nUpload CNIC, contract, '
+                      'certificates — they are stored securely.',
+                ),
+              )
+            else
+              for (final d in docs) _docCard(context, ref, d, canEdit),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _docCard(BuildContext context, WidgetRef ref,
+      EmployeeDocumentModel d, bool canEdit) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AppCard(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Icon(_iconFor(d), color: AppColors.brandNavy),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(d.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13.5,
+                          color: AppColors.heading)),
+                  Text(
+                    '${d.sizeLabel}${d.uploadedAt != null ? "  ·  ${_fmtDate(d.uploadedAt)}" : ""}',
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Open / download',
+              icon: const Icon(Icons.download_rounded,
+                  size: 20, color: AppColors.brandBlue),
+              onPressed: () => _open(d.url),
+            ),
+            if (canEdit)
+              IconButton(
+                tooltip: 'Delete',
+                icon: const Icon(Icons.delete_outline,
+                    size: 20, color: AppColors.error),
+                onPressed: () => _confirmDelete(context, ref, d),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _iconFor(EmployeeDocumentModel d) {
+    final n = d.name.toLowerCase();
+    if (n.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+    if (n.endsWith('.png') ||
+        n.endsWith('.jpg') ||
+        n.endsWith('.jpeg') ||
+        n.endsWith('.webp')) {
+      return Icons.image_rounded;
+    }
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Future<void> _open(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _upload(BuildContext context, WidgetRef ref) async {
+    final result = await FilePicker.platform.pickFiles(withData: true);
+    if (result == null) return;
+    final user = ref.read(currentUserProvider).valueOrNull;
+    final svc = ref.read(employeeDocumentServiceProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    for (final f in result.files) {
+      final bytes = f.bytes;
+      if (bytes == null) continue;
+      try {
+        await svc.upload(
+          employeeId,
+          bytes: bytes,
+          fileName: f.name,
+          userId: user?.id ?? '',
+        );
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Upload failed: ${AppException.from(e).message}')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(
+      BuildContext context, WidgetRef ref, EmployeeDocumentModel d) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete file'),
+        content: Text('Delete "${d.name}"? This cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final user = ref.read(currentUserProvider).valueOrNull;
+    try {
+      await ref
+          .read(employeeDocumentServiceProvider)
+          .delete(employeeId, d, userId: user?.id ?? '');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppException.from(e).message)),
+        );
+      }
+    }
   }
 }
 

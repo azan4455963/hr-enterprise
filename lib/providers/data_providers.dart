@@ -6,6 +6,7 @@ import '../models/attendance_qr_session_model.dart';
 import '../models/audit_log_model.dart';
 import '../models/company_settings_model.dart';
 import '../models/department_model.dart';
+import '../models/employee_document_model.dart';
 import '../models/employee_model.dart';
 import '../models/employee_record_model.dart';
 import '../models/leave_model.dart';
@@ -93,6 +94,12 @@ final employeePayrollHistoryProvider =
 final employeeRecordsProvider =
     StreamProvider.family<List<EmployeeRecordModel>, String>((ref, employeeId) {
   return ref.watch(employeeRecordServiceProvider).watch(employeeId);
+});
+
+/// Files (CNIC, contract, certificates…) attached to one employee.
+final employeeDocumentsProvider =
+    StreamProvider.family<List<EmployeeDocumentModel>, String>((ref, employeeId) {
+  return ref.watch(employeeDocumentServiceProvider).watch(employeeId);
 });
 
 final recentAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {

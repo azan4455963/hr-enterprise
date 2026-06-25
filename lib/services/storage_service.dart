@@ -53,4 +53,11 @@ class StorageService {
       fileName: name,
     );
   }
+
+  /// Best-effort delete of a stored file given its download URL.
+  Future<void> deleteByUrl(String url) async {
+    try {
+      await _storage.refFromURL(url).delete();
+    } catch (_) {/* file may already be gone — ignore */}
+  }
 }
