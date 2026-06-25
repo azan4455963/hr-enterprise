@@ -255,13 +255,30 @@ class _TableCard extends StatelessWidget {
                 ),
               ),
               PopupMenuButton<String>(
+                tooltip: 'Options',
+                icon: const Icon(Icons.more_vert_rounded,
+                    color: AppColors.textMuted),
                 onSelected: (v) {
                   if (v == 'rename') onRename();
                   if (v == 'delete') onDelete();
                 },
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'rename', child: Text('Rename')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  PopupMenuItem(
+                    value: 'rename',
+                    child: Row(children: [
+                      Icon(Icons.edit_outlined, size: 18),
+                      SizedBox(width: 10),
+                      Text('Rename'),
+                    ]),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(children: [
+                      Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                      SizedBox(width: 10),
+                      Text('Delete'),
+                    ]),
+                  ),
                 ],
               ),
               const Icon(Icons.chevron_right, color: AppColors.textFaint),

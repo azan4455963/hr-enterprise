@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,6 +38,22 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   int _structureKey = 0;
   String _tableName = 'Table';
   PlutoGridStateManager? _sm;
+  Timer? _autoSave;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-save: every 3s, if there are unsaved changes, persist them.
+    _autoSave = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_loaded && _dirty && !_saving) _save();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoSave?.cancel();
+    super.dispose();
+  }
 
   String _field(int i) => 'c$i';
 
@@ -143,21 +161,10 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
               ),
             ),
             actions: [
-              if (_dirty)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: TextButton.icon(
-                    onPressed: _saving ? null : _save,
-                    icon: _saving
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_rounded, size: 18),
-                    label: Text(_saving ? 'Saving…' : 'Save'),
-                  ),
-                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 14),
+                child: Center(child: _saveStatus()),
+              ),
             ],
           ),
           body: Column(
@@ -721,6 +728,35 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// AppBar auto-save status (replaces the manual Save button).
+  Widget _saveStatus() {
+    if (_saving) {
+      return const Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2)),
+        SizedBox(width: 8),
+        Text('Saving…',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+      ]);
+    }
+    if (_dirty) {
+      return const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.cloud_upload_outlined, size: 16, color: AppColors.textMuted),
+        SizedBox(width: 6),
+        Text('Saving soon…',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+      ]);
+    }
+    return const Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(Icons.cloud_done_outlined, size: 16, color: AppColors.pillGreenFg),
+      SizedBox(width: 6),
+      Text('Saved',
+          style: TextStyle(fontSize: 12.5, color: AppColors.pillGreenFg)),
+    ]);
   }
 
   // ── Sheet tabs (footer, like Google Sheets) ─────────────────────────────

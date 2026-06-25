@@ -205,7 +205,9 @@ class _AppShellState extends ConsumerState<AppShell> {
           left: aiOpen ? 0 : -AiAssistantPanel.width,
           child: const AiAssistantPanel(),
         ),
-        if (isAdmin && !aiOpen)
+        // Hide the AI launcher on the Tables screens — it overlaps the
+        // editor's footer sheet-tabs and clutters the table view.
+        if (isAdmin && !aiOpen && !location.startsWith('/tables'))
           Positioned(
             right: 20,
             bottom: 20,
