@@ -37,7 +37,6 @@ class DashboardScreen extends ConsumerWidget {
           ],
           _StatRow(ref: ref, isWide: isWide).animate().fadeIn(),
           const SizedBox(height: 20),
-          _TodayAttendanceTotalCard(ref: ref),
           if (isWide)
             IntrinsicHeight(
               child: Row(
@@ -435,6 +434,10 @@ class _StatRow extends StatelessWidget {
     final pendingLeave = ref.watch(pendingLeaveProvider);
     // When an attendance sheet is attached, its figures take priority.
     final sheetAtt = ref.watch(attendanceSheetSummaryProvider).valueOrNull;
+    // In-app attendance tables take top priority (today's totals).
+    final tableAtt = ref.watch(tableAttendanceTodayProvider);
+    final hasTableAtt = tableAtt.hasData;
+    const tableFooter = 'today · from tables';
 
     final user = ref.watch(currentUserProvider).valueOrNull;
     final canViewEmployees =
@@ -451,37 +454,50 @@ class _StatRow extends StatelessWidget {
     final sheetFooter =
         sheetPeriod != null ? '$sheetPeriod · from sheet' : 'from sheet';
 
-    // Present card: prefer sheet, else Firestore stats.
-    final presentValue = sheetAtt != null
-        ? '${sheetAtt.present}'
-        : fromInt(stats, (s) => '${s.present}');
-    final presentFooter = sheetAtt != null
-        ? sheetFooter
-        : stats.maybeWhen(
-            data: (s) => s.total > 0
-                ? '${((s.present / s.total) * 100).round()}% attendance rate'
-                : '—',
-            orElse: () => '—',
-          );
+    // Priority: in-app tables → attached sheet → Firestore stats.
+    final presentValue = hasTableAtt
+        ? '${tableAtt.present}'
+        : sheetAtt != null
+            ? '${sheetAtt.present}'
+            : fromInt(stats, (s) => '${s.present}');
+    final presentFooter = hasTableAtt
+        ? tableFooter
+        : sheetAtt != null
+            ? sheetFooter
+            : stats.maybeWhen(
+                data: (s) => s.total > 0
+                    ? '${((s.present / s.total) * 100).round()}% attendance rate'
+                    : '—',
+                orElse: () => '—',
+              );
 
-    final absentValue = sheetAtt != null
-        ? '${sheetAtt.absent}'
-        : fromInt(stats, (s) => '${s.absent}');
+    final absentValue = hasTableAtt
+        ? '${tableAtt.absent}'
+        : sheetAtt != null
+            ? '${sheetAtt.absent}'
+            : fromInt(stats, (s) => '${s.absent}');
+    final absentFooter = hasTableAtt
+        ? tableFooter
+        : (sheetAtt != null ? sheetFooter : 'Not checked in');
 
-    // Fourth card flips to "On Leave" when the sheet reports leave, else
+    // Fourth card shows "On Leave" when tables/sheet report leave, else
     // keeps showing pending leave approvals.
-    final showLeaveFromSheet = sheetAtt != null;
+    final showLeave = hasTableAtt || sheetAtt != null;
+    final leaveValue = hasTableAtt
+        ? '${tableAtt.leave}'
+        : (sheetAtt != null ? '${sheetAtt.leave}' : '0');
+    final leaveFooter = hasTableAtt ? tableFooter : sheetFooter;
 
     return StatCardRow(
       isWide: isWide,
       cards: [
         StatCard(
           label: 'Total Employees',
-          value: sheetAtt != null
+          value: (!hasTableAtt && sheetAtt != null)
               ? '${sheetAtt.headcount}'
               : fromInt(employeeCount),
           icon: Icons.groups_rounded,
-          footer: sheetAtt != null
+          footer: (!hasTableAtt && sheetAtt != null)
               ? sheetFooter
               : (canViewEmployees ? 'View details →' : 'Active workforce'),
           onTap: canViewEmployees
@@ -504,17 +520,17 @@ class _StatRow extends StatelessWidget {
           icon: Icons.cancel_outlined,
           iconColor: AppColors.pillRedFg,
           iconBg: AppColors.pillRedBg,
-          footer: sheetAtt != null ? sheetFooter : 'Not checked in',
+          footer: absentFooter,
           onTap: () => context.go('/attendance'),
         ),
-        if (showLeaveFromSheet)
+        if (showLeave)
           StatCard(
             label: 'On Leave',
-            value: '${sheetAtt.leave}',
+            value: leaveValue,
             icon: Icons.beach_access_rounded,
             iconColor: AppColors.pillAmberFg,
             iconBg: AppColors.pillAmberBg,
-            footer: sheetFooter,
+            footer: leaveFooter,
             footerColor: AppColors.pillAmberFg,
             onTap: () => context.go('/leave'),
           )
@@ -968,112 +984,6 @@ class _DeptHeaderRow extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: Text('ACTIONS', style: style))),
       ],
-    );
-  }
-}
-
-/// ── Today's attendance — grand total only (detail lives in /attendance) ──
-class _TodayAttendanceTotalCard extends StatelessWidget {
-  const _TodayAttendanceTotalCard({required this.ref});
-  final WidgetRef ref;
-
-  @override
-  Widget build(BuildContext context) {
-    final today = ref.watch(tableAttendanceTodayProvider);
-    if (!today.hasData) return const SizedBox.shrink();
-
-    final dateStr = _fmtToday(today.date);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: InkWell(
-        onTap: () => context.go('/attendance'),
-        borderRadius: BorderRadius.circular(14),
-        child: AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.event_available_rounded,
-                      size: 18, color: AppColors.brandNavy),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text("Today's Attendance · $dateStr",
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.heading)),
-                  ),
-                  const Text('By department →',
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.brandBlue)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  _TotChip('Present', today.present, AppColors.pillGreenFg,
-                      AppColors.pillGreenBg),
-                  _TotChip('Late', today.late, AppColors.pillAmberFg,
-                      AppColors.pillAmberBg),
-                  _TotChip('Leave', today.leave, AppColors.pillBlueFg,
-                      AppColors.pillBlueBg),
-                  _TotChip('Absent', today.absent, AppColors.pillRedFg,
-                      AppColors.pillRedBg),
-                  _TotChip('Marked', today.totalPeople, AppColors.textBody,
-                      AppColors.canvas),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _fmtToday(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${d.day} ${months[d.month - 1]} ${d.year}';
-  }
-}
-
-class _TotChip extends StatelessWidget {
-  const _TotChip(this.label, this.count, this.fg, this.bg);
-  final String label;
-  final int count;
-  final Color fg;
-  final Color bg;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: fg.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('$count',
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w800, color: fg)),
-          const SizedBox(width: 8),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textBody)),
-        ],
-      ),
     );
   }
 }
