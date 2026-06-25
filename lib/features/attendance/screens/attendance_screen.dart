@@ -392,13 +392,17 @@ class _MyActions extends StatelessWidget {
   }
 }
 
-class _AttendanceLog extends StatelessWidget {
+class _AttendanceLog extends ConsumerWidget {
   const _AttendanceLog({required this.attendance, required this.isWide});
   final AsyncValue<List<AttendanceModel>> attendance;
   final bool isWide;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Prefer the in-app attendance tables' log when present.
+    final tableLog = ref.watch(tableAttendanceLogProvider);
+    if (tableLog.isNotEmpty) return _tableLogView(tableLog);
+
     final tf = DateFormat('hh:mm a');
     final df = DateFormat('MMM d, yyyy');
     return attendance.when(
@@ -491,6 +495,62 @@ class _AttendanceLog extends StatelessWidget {
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('$e')),
+    );
+  }
+
+  /// Today's per-employee log built from the in-app attendance tables.
+  Widget _tableLogView(List<AttendanceLogEntry> log) {
+    StatusPill pill(AttBucket b, String raw) {
+      switch (b) {
+        case AttBucket.present:
+          return StatusPill.green(raw);
+        case AttBucket.late:
+          return StatusPill.amber(raw);
+        case AttBucket.leave:
+          return StatusPill.blue(raw);
+        case AttBucket.absent:
+        case AttBucket.terminated:
+          return StatusPill.red(raw);
+        case AttBucket.off:
+        case AttBucket.blank:
+          return StatusPill.blue(raw);
+      }
+    }
+
+    return ListView.separated(
+      itemCount: log.length,
+      separatorBuilder: (_, _) =>
+          const Divider(height: 1, color: AppColors.cardBorder),
+      itemBuilder: (_, i) {
+        final e = log[i];
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+          child: Row(
+            children: [
+              InitialAvatar(name: e.employee, size: 34),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 4,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(e.employee,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.heading),
+                        overflow: TextOverflow.ellipsis),
+                    Text(e.department,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+              Align(alignment: Alignment.centerRight, child: pill(e.bucket, e.status)),
+            ],
+          ),
+        );
+      },
     );
   }
 }

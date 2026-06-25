@@ -172,3 +172,65 @@ final tableAttendanceTodayProvider = Provider<TodayAttendance>((ref) {
   final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
   return computeTodayAttendance(tables, DateTime.now());
 });
+
+/// One per-employee attendance entry for a day (for the log view).
+class AttendanceLogEntry {
+  const AttendanceLogEntry({
+    required this.department,
+    required this.employee,
+    required this.status,
+    required this.bucket,
+  });
+  final String department;
+  final String employee;
+  final String status;
+  final AttBucket bucket;
+}
+
+/// Flatten the day's attendance across all department tables into per-employee
+/// log entries (skips empty/off cells).
+List<AttendanceLogEntry> computeTodayLog(
+    List<DataTableModel> tables, DateTime day) {
+  final out = <AttendanceLogEntry>[];
+  for (final t in tables) {
+    for (final sheet in t.sheets) {
+      final dateIdx = _col(sheet.columns, 'date');
+      if (dateIdx < 0) continue;
+      final dayIdx = _col(sheet.columns, 'working days');
+      final altDayIdx = dayIdx >= 0 ? dayIdx : _col(sheet.columns, 'day');
+      final empCols = <int>[
+        for (var i = 0; i < sheet.columns.length; i++)
+          if (i != dateIdx &&
+              i != altDayIdx &&
+              sheet.columns[i].trim().isNotEmpty)
+            i,
+      ];
+      if (empCols.isEmpty) continue;
+      for (final row in sheet.rows) {
+        if (dateIdx >= row.length) continue;
+        final d = _parseDate(row[dateIdx]);
+        if (d == null || !_sameDay(d, day)) continue;
+        for (final c in empCols) {
+          final cell = (c < row.length ? row[c] : '').trim();
+          final bucket = classifyStatus(cell);
+          if (bucket == AttBucket.blank || bucket == AttBucket.off) continue;
+          out.add(AttendanceLogEntry(
+            department: t.name,
+            employee: sheet.columns[c],
+            status: cell,
+            bucket: bucket,
+          ));
+        }
+        break; // only the matching date row per sheet
+      }
+    }
+  }
+  out.sort((a, b) => a.employee.compareTo(b.employee));
+  return out;
+}
+
+/// Today's per-employee attendance log from in-app tables (live).
+final tableAttendanceLogProvider = Provider<List<AttendanceLogEntry>>((ref) {
+  final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
+  return computeTodayLog(tables, DateTime.now());
+});
