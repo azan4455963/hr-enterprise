@@ -127,7 +127,13 @@ service cloud.firestore {
     }
 
     match /payroll/{id} {
-      allow read: if isSignedIn() && hasPerm('payroll_view');
+      // Admins/HR with payroll_view see all; a linked employee may read only
+      // their own payroll (for self-service payslips / reports).
+      allow read: if isSignedIn() && (
+        hasPerm('payroll_view') ||
+        (hasLinkedEmployee() &&
+          resource.data.employeeId == userDoc().employeeId)
+      );
       allow write: if isSignedIn() && hasPerm('payroll_edit');
     }
 

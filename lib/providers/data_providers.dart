@@ -98,6 +98,13 @@ final employeePayrollHistoryProvider =
       );
 });
 
+/// One employee's payroll via a constrained query — used by employee
+/// self-service so it works under the per-employee payroll read rule.
+final myPayrollProvider =
+    StreamProvider.family<List<PayrollModel>, String>((ref, employeeId) {
+  return ref.watch(payrollServiceProvider).watchForEmployee(employeeId);
+});
+
 /// Free-form custom records stored under one employee's id.
 final employeeRecordsProvider =
     StreamProvider.family<List<EmployeeRecordModel>, String>((ref, employeeId) {

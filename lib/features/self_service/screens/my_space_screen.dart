@@ -8,9 +8,11 @@ import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/leave_model.dart';
+import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/leave_balance_providers.dart';
+import '../../../providers/service_providers.dart';
 
 /// Self-service home for an employee: their profile, leave balance, leave
 /// history and a shortcut to apply for leave. Only shows data the signed-in
@@ -65,7 +67,18 @@ class MySpaceScreen extends ConsumerWidget {
               ),
             )
           else ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () => _downloadReport(context, ref, user),
+                icon: const Icon(Icons.download_rounded, size: 18),
+                label: const Text('Download My Report (PDF)'),
+              ),
+            ),
+            const SizedBox(height: 16),
             _LeaveBalanceSection(employeeId: empId),
+            const SizedBox(height: 16),
+            _SalarySection(employeeId: empId),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -91,6 +104,34 @@ class MySpaceScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _downloadReport(
+      BuildContext context, WidgetRef ref, UserModel user) async {
+    final empId = user.employeeId;
+    if (empId == null || empId.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final leaves =
+          await ref.read(employeeLeaveHistoryProvider(empId).future);
+      final payroll = await ref.read(myPayrollProvider(empId).future);
+      final company =
+          ref.read(companySettingsProvider).valueOrNull?.companyName ??
+              'Company';
+      await ref.read(exportServiceProvider).shareMyReportPdf(
+            companyName: company,
+            employeeName: user.displayName ?? user.email,
+            role:
+                RolePermissions.effectiveRole(user.role).replaceAll('_', ' '),
+            department: user.departmentName,
+            email: user.email,
+            leaves: leaves,
+            payroll: payroll,
+          );
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text('Could not build report: $e')));
+    }
   }
 }
 
@@ -228,6 +269,98 @@ class _BalanceCard extends StatelessWidget {
               style: const TextStyle(fontSize: 11, color: AppColors.textFaint)),
         ],
       ),
+    );
+  }
+}
+
+const _monthNames = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+String _rs(double v) {
+  final s = v.toStringAsFixed(0);
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+    buf.write(s[i]);
+  }
+  return 'Rs ${buf.toString()}';
+}
+
+class _SalarySection extends ConsumerWidget {
+  const _SalarySection({required this.employeeId});
+  final String employeeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final payrollAsync = ref.watch(myPayrollProvider(employeeId));
+    return payrollAsync.when(
+      // Payroll may be restricted until the rules update is deployed — fail
+      // quietly rather than showing an error to the employee.
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'My salary',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.heading,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            for (final p in list)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: AppCard(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${_monthNames[(p.month - 1).clamp(0, 11)]} ${p.year}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.heading),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Base ${_rs(p.baseSalary)}'
+                              '${p.bonuses > 0 ? " • Bonus ${_rs(p.bonuses)}" : ""}'
+                              '${p.deductions > 0 ? " • Ded ${_rs(p.deductions)}" : ""}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(_rs(p.calculatedNet),
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary)),
+                          Text(p.status.name,
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textFaint)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

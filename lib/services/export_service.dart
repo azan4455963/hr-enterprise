@@ -242,6 +242,132 @@ class ExportService {
     );
   }
 
+  /// Self-service "My Report" PDF for an employee — profile, leave summary +
+  /// history, and the monthly salary breakdown. Built only from data the
+  /// employee can read (no EmployeeModel needed). PDF only, web-safe.
+  Future<void> shareMyReportPdf({
+    required String companyName,
+    required String employeeName,
+    required String role,
+    String? department,
+    String? email,
+    required List<LeaveRequestModel> leaves,
+    required List<PayrollModel> payroll,
+  }) async {
+    final doc = pw.Document();
+    final totalLeaveDays = leaves
+        .where((l) => l.status == LeaveStatus.approved)
+        .fold<int>(0, (s, l) => s + l.days);
+    final totalNet = payroll.fold<double>(0, (s, p) => s + p.calculatedNet);
+
+    pw.Widget kv(String k, String v) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(vertical: 2),
+          child: pw.Row(children: [
+            pw.SizedBox(
+                width: 140,
+                child: pw.Text(k,
+                    style:
+                        pw.TextStyle(color: PdfColors.grey700, fontSize: 10))),
+            pw.Expanded(
+                child: pw.Text(v, style: const pw.TextStyle(fontSize: 10))),
+          ]),
+        );
+
+    doc.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(16),
+            color: PdfColors.indigo50,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(companyName,
+                    style: pw.TextStyle(
+                        fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                pw.Text('Employee Report',
+                    style:
+                        pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          kv('Name', employeeName),
+          kv('Role', role),
+          if (department != null && department.isNotEmpty)
+            kv('Department', department),
+          if (email != null && email.isNotEmpty) kv('Email', email),
+          pw.SizedBox(height: 16),
+
+          pw.Text('Leave Summary',
+              style:
+                  pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          kv('Total approved leave', '$totalLeaveDays day(s)'),
+          kv('Total requests', '${leaves.length}'),
+          pw.SizedBox(height: 8),
+          if (leaves.isNotEmpty)
+            pw.TableHelper.fromTextArray(
+              headers: ['Type', 'From', 'To', 'Days', 'Status'],
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              headerStyle:
+                  pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+              data: leaves
+                  .map((l) => [
+                        l.leaveType.name,
+                        _dayFormat.format(l.startDate),
+                        _dayFormat.format(l.endDate),
+                        '${l.days}',
+                        l.status.name,
+                      ])
+                  .toList(),
+            ),
+          pw.SizedBox(height: 16),
+
+          pw.Text('Salary Record',
+              style:
+                  pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+          pw.Divider(),
+          if (payroll.isEmpty)
+            pw.Text('No salary records yet.',
+                style: const pw.TextStyle(fontSize: 10))
+          else ...[
+            pw.TableHelper.fromTextArray(
+              headers: ['Month', 'Base', 'Bonus', 'Deductions', 'Net', 'Status'],
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              headerStyle:
+                  pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+              data: payroll
+                  .map((p) => [
+                        '${p.month}/${p.year}',
+                        p.baseSalary.toStringAsFixed(0),
+                        p.bonuses.toStringAsFixed(0),
+                        p.deductions.toStringAsFixed(0),
+                        p.calculatedNet.toStringAsFixed(0),
+                        p.status.name,
+                      ])
+                  .toList(),
+            ),
+            pw.SizedBox(height: 6),
+            pw.Text(
+              'Total net (all months): Rs ${NumberFormat('#,##0').format(totalNet)}',
+              style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+            ),
+          ],
+          pw.SizedBox(height: 18),
+          pw.Text('Generated ${_dateFormat.format(DateTime.now())}',
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+        ],
+      ),
+    );
+
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'my_report_${employeeName.replaceAll(' ', '_')}.pdf',
+    );
+  }
+
   /// Full single-employee profile report: details, attendance, leave & payroll.
   Future<Uint8List> buildEmployeeProfilePdf({
     required EmployeeModel employee,

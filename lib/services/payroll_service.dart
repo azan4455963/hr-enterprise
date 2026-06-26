@@ -30,6 +30,24 @@ class PayrollService {
         });
   }
 
+  /// One employee's payroll, newest month first. Uses a constrained query so it
+  /// works under the per-employee payroll read rule (employee self-service).
+  Stream<List<PayrollModel>> watchForEmployee(String employeeId) {
+    return _collection
+        .where('employeeId', isEqualTo: employeeId)
+        .snapshots()
+        .map((snap) {
+      final list = snap.docs
+          .map((d) => PayrollModel.fromMap(d.id, d.data()))
+          .toList();
+      list.sort((a, b) {
+        final byYear = b.year.compareTo(a.year);
+        return byYear != 0 ? byYear : b.month.compareTo(a.month);
+      });
+      return list;
+    });
+  }
+
   Future<String> createPayroll(PayrollModel payroll) async {
     final ref = await _collection.add(payroll.toMap());
     return ref.id;
