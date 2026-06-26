@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,10 +6,13 @@ import 'package:intl/intl.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/excel_import.dart';
+import '../../../core/utils/file_saver.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/data_table_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_table_providers.dart';
+import '../../../providers/service_providers.dart';
 
 /// Lists custom in-app tables. Create, open, rename, delete.
 class DataTablesScreen extends ConsumerWidget {
@@ -34,10 +38,21 @@ class DataTablesScreen extends ConsumerWidget {
                       'Build your own data tables — add columns and rows, fill in records.',
                 ),
               ),
-              PrimaryButton(
-                label: 'New Table',
-                icon: Icons.add,
-                onPressed: () => _create(context, ref, user?.id ?? ''),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _importExcel(context, ref, user?.id ?? ''),
+                    icon: const Icon(Icons.upload_file_outlined, size: 18),
+                    label: const Text('Import Excel'),
+                  ),
+                  const SizedBox(width: 10),
+                  PrimaryButton(
+                    label: 'New Table',
+                    icon: Icons.add,
+                    onPressed: () => _create(context, ref, user?.id ?? ''),
+                  ),
+                ],
               ),
             ],
           ),
@@ -79,6 +94,7 @@ class DataTablesScreen extends ConsumerWidget {
                       onOpen: () => context.go('/tables/${t.id}'),
                       onRename: () =>
                           _rename(context, ref, t, user?.id ?? ''),
+                      onExport: () => _exportExcel(context, ref, t),
                       onDelete: () =>
                           _confirmDelete(context, ref, t, user?.id ?? ''),
                     ),
@@ -115,6 +131,7 @@ class DataTablesScreen extends ConsumerWidget {
       ),
     );
     if (type == null) return;
+    if (!context.mounted) return;
 
     if (type == 'attendance') {
       final name = await _nameDialog(context,
@@ -144,6 +161,67 @@ class DataTablesScreen extends ConsumerWidget {
     await ref
         .read(dataTableServiceProvider)
         .rename(t.id, name: name.trim(), userId: userId);
+  }
+
+  /// Pick an .xlsx file and import it as a brand-new table (one tab per sheet).
+  Future<void> _importExcel(
+      BuildContext context, WidgetRef ref, String userId) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final res = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['xlsx'],
+      withData: true,
+    );
+    if (res == null || res.files.isEmpty) return;
+    final file = res.files.first;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Could not read the file.')));
+      return;
+    }
+    List<DataSheet> sheets;
+    try {
+      sheets = parseExcelWorkbook(bytes);
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text("That doesn't look like a valid .xlsx file.")));
+      return;
+    }
+    if (sheets.isEmpty) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('No data found in that file.')));
+      return;
+    }
+    final name =
+        file.name.replaceAll(RegExp(r'\.xlsx$', caseSensitive: false), '');
+    final id = await ref.read(dataTableServiceProvider).importWorkbook(
+          name: name,
+          sheets: sheets,
+          userId: userId,
+        );
+    if (context.mounted) context.go('/tables/$id');
+  }
+
+  /// Export a table to an .xlsx download (one worksheet per tab). Read-only.
+  Future<void> _exportExcel(
+      BuildContext context, WidgetRef ref, DataTableModel t) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final bytes =
+          await ref.read(exportServiceProvider).buildTableWorkbookExcel(t);
+      final safe = t.name.trim().isEmpty
+          ? 'table'
+          : t.name.replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '_');
+      await saveBytes(
+        bytes,
+        '$safe.xlsx',
+        mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $e')));
+    }
   }
 
   Future<String?> _nameDialog(BuildContext context,
@@ -205,11 +283,13 @@ class _TableCard extends StatelessWidget {
     required this.table,
     required this.onOpen,
     required this.onRename,
+    required this.onExport,
     required this.onDelete,
   });
   final DataTableModel table;
   final VoidCallback onOpen;
   final VoidCallback onRename;
+  final VoidCallback onExport;
   final VoidCallback onDelete;
 
   @override
@@ -260,6 +340,7 @@ class _TableCard extends StatelessWidget {
                     color: AppColors.textMuted),
                 onSelected: (v) {
                   if (v == 'rename') onRename();
+                  if (v == 'export') onExport();
                   if (v == 'delete') onDelete();
                 },
                 itemBuilder: (_) => const [
@@ -269,6 +350,14 @@ class _TableCard extends StatelessWidget {
                       Icon(Icons.edit_outlined, size: 18),
                       SizedBox(width: 10),
                       Text('Rename'),
+                    ]),
+                  ),
+                  PopupMenuItem(
+                    value: 'export',
+                    child: Row(children: [
+                      Icon(Icons.file_download_outlined, size: 18),
+                      SizedBox(width: 10),
+                      Text('Export to Excel'),
                     ]),
                   ),
                   PopupMenuItem(

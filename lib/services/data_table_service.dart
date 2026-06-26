@@ -95,6 +95,33 @@ class DataTableService {
     return ref.id;
   }
 
+  /// Create a brand-new table from imported sheets (e.g. an uploaded .xlsx).
+  /// Never touches existing tables.
+  Future<String> importWorkbook({
+    required String name,
+    required List<DataSheet> sheets,
+    required String userId,
+  }) async {
+    final safeSheets = sheets.isEmpty
+        ? [const DataSheet(name: 'Sheet 1', columns: ['Column 1'], rows: [])]
+        : sheets;
+    final ref = await _ref.add({
+      'name': name.trim().isEmpty ? 'Imported table' : name.trim(),
+      'sheets': [for (final s in safeSheets) s.toMap()],
+      'createdBy': userId,
+      'createdAt': DateTime.now(),
+      'updatedAt': DateTime.now(),
+    });
+    await _audit.log(
+      userId: userId,
+      action: 'create',
+      module: 'tables',
+      targetId: ref.id,
+      details: {'name': name, 'type': 'import', 'tabs': safeSheets.length},
+    );
+    return ref.id;
+  }
+
   /// Save the whole workbook (all tabs). Optionally also renames it.
   Future<void> save(
     String id, {

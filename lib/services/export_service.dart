@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/attendance_model.dart';
+import '../models/data_table_model.dart';
 import '../models/employee_model.dart';
 import '../models/leave_model.dart';
 import '../models/payroll_model.dart';
@@ -631,6 +632,50 @@ class ExportService {
         TextCellValue(r.status.name),
         TextCellValue(r.reason ?? ''),
       ]);
+    }
+    return Uint8List.fromList(excel.encode()!);
+  }
+
+  /// Export a whole custom table as an .xlsx workbook — one worksheet per tab,
+  /// first row = column headers. Cells are written as text (round-trips cleanly
+  /// back through import).
+  Future<Uint8List> buildTableWorkbookExcel(DataTableModel table) async {
+    final excel = Excel.createExcel();
+    final used = <String>{};
+
+    String sheetName(String raw, int index) {
+      // Excel sheet names: max 31 chars, no [ ] : * ? / \, must be unique.
+      var n = raw.replaceAll(RegExp(r'[\[\]\*\?:\\/]'), ' ').trim();
+      if (n.isEmpty) n = 'Sheet ${index + 1}';
+      if (n.length > 31) n = n.substring(0, 31);
+      var candidate = n;
+      var k = 1;
+      while (used.contains(candidate.toLowerCase())) {
+        final suffix = ' (${++k})';
+        final base = n.length + suffix.length > 31
+            ? n.substring(0, 31 - suffix.length)
+            : n;
+        candidate = '$base$suffix';
+      }
+      used.add(candidate.toLowerCase());
+      return candidate;
+    }
+
+    for (var i = 0; i < table.sheets.length; i++) {
+      final s = table.sheets[i];
+      final ws = excel[sheetName(s.name, i)];
+      if (s.columns.isNotEmpty) {
+        ws.appendRow([for (final c in s.columns) TextCellValue(c)]);
+      }
+      for (final row in s.rows) {
+        ws.appendRow([for (final cell in row) TextCellValue(cell)]);
+      }
+    }
+
+    // Drop the auto-created default sheet if we didn't reuse its name.
+    final def = excel.getDefaultSheet();
+    if (def != null && !used.contains(def.toLowerCase())) {
+      excel.delete(def);
     }
     return Uint8List.fromList(excel.encode()!);
   }
