@@ -358,10 +358,10 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   bool _sending = false;
 
   static const _suggestions = [
-    'How many employees are active?',
     'Who is absent today?',
-    'Show salary of the highest-paid employee',
-    'Who took the most leaves this month?',
+    "Show an employee's attendance this month",
+    'How do I create an attendance table?',
+    'How do I add a new employee?',
   ];
 
   @override
@@ -381,12 +381,17 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     });
     _scrollToEnd();
     try {
-      // Focused context: if the question names a person, send just their
-      // dossier (accurate + cheap); else the full snapshot.
+      // Context = a keyword search (so any stray word can be found) plus either
+      // the named person's full dossier or the overall HR snapshot.
       final focused = await employeeFocusedDossier(ref, text);
-      final data = focused != null
+      final search = await aiSearchMatches(ref, text);
+      final base = focused != null
           ? focused.dossier
           : await ref.read(aiDataContextProvider.future);
+      final data = [
+        if (search.isNotEmpty) search,
+        base,
+      ].join('\n\n');
       final reply = await ref.read(aiAssistantServiceProvider).chat(
             config: widget.config,
             systemPrompt: _systemPrompt(data),
@@ -414,12 +419,24 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   }
 
   String _systemPrompt(String data) {
-    return 'You are the HR Assistant inside an HR management app. Answer the '
-        "user's questions using ONLY the HR data snapshot below. Be concise and "
-        'specific; use names and numbers from the data. If the answer is not in '
-        'the data, say you could not find it. Do not invent records.\n\n'
-        'ACTIONS: You can perform two actions when the user clearly asks for '
-        'them. To do so, reply with ONLY a fenced code block (no other text):\n'
+    return 'You are the built-in HR Assistant inside an HR management app. You '
+        'help the admin in two ways:\n'
+        '1) ANSWER QUESTIONS about the HR data below — employees, departments, '
+        'attendance, leave, payroll and the custom tables. Be concise and '
+        'specific; use the real names, dates and numbers from the data. '
+        'Attendance is mostly kept in the custom tables (a column per person), '
+        'so look there too. Use the SEARCH MATCHES section to find any specific '
+        'word the user asks about. If something is genuinely not present, say '
+        'you could not find it — never invent records, names or numbers.\n'
+        '2) EXPLAIN HOW TO USE THE APP from the APP GUIDE below (add an '
+        'employee, make a table, mark attendance, delete rows, etc.).\n\n'
+        'SAFETY: You can never change or delete data on your own. The only '
+        'actions you may request are the two below, and the app ALWAYS asks the '
+        'user to confirm before anything is saved. Never claim you have already '
+        'changed, saved or deleted anything. Never request bulk deletes or edits '
+        'to many records at once.\n\n'
+        'ACTIONS: Only when the user clearly asks you to do one of these, reply '
+        'with ONLY a fenced code block (no other text):\n'
         '```hr-action\n'
         '{"action":"mark_attendance","employee":"<full name>","status":"present|absent|leave|late"}\n'
         '```\n'
@@ -427,8 +444,8 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         '```hr-action\n'
         '{"action":"create_leave","employee":"<full name>","type":"sick|casual|annual|unpaid|other","from":"YYYY-MM-DD","to":"YYYY-MM-DD","reason":"<short reason>"}\n'
         '```\n'
-        'The app will ask the user to confirm before doing anything. For all '
-        'other questions, answer normally (no action block).\n\n'
+        'For every other request, answer normally (no action block).\n\n'
+        '$aiAppGuide\n\n'
         '--- HR DATA SNAPSHOT ---\n$data\n--- END DATA ---';
   }
 
@@ -582,14 +599,15 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         const Icon(Icons.auto_awesome_rounded,
             size: 36, color: AppColors.brandBlue),
         const SizedBox(height: 10),
-        const Text('Ask about your HR data',
+        const Text('Ask me anything',
             style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 15,
                 color: AppColors.heading)),
         const SizedBox(height: 4),
         const Text(
-          'Employees, attendance, leave, payroll and custom tables.',
+          'Find any employee, attendance, leave, payroll or table data — '
+          'or ask how to do something in the app.',
           style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
         ),
         const SizedBox(height: 16),

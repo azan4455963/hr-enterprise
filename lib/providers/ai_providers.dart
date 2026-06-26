@@ -5,10 +5,12 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 
 import '../models/ai_assistant_model.dart';
+import '../models/data_table_model.dart';
 import '../models/employee_model.dart';
 import '../services/ai_assistant_service.dart';
 import 'data_providers.dart';
 import 'data_table_providers.dart';
+import 'table_attendance_providers.dart';
 
 final aiAssistantServiceProvider =
     Provider<AiAssistantService>((ref) => AiAssistantService());
@@ -58,6 +60,7 @@ final aiDataContextProvider = FutureProvider<String>((ref) async {
   final attendance = await ref.watch(recentAttendanceProvider.future);
   final payroll = await ref.watch(payrollProvider.future);
   final tables = await ref.watch(dataTablesProvider.future);
+  final departments = await ref.watch(departmentsProvider.future);
 
   final dayFmt = DateFormat('dd-MMM-yyyy');
   final timeFmt = DateFormat('hh:mm a');
@@ -79,6 +82,18 @@ final aiDataContextProvider = FutureProvider<String>((ref) async {
   }
   if (employees.length > 250) {
     buf.writeln('...(${employees.length - 250} more employees omitted)');
+  }
+  buf.writeln();
+
+  // Departments
+  buf.writeln('=== DEPARTMENTS (${departments.length}) ===');
+  for (final d in departments) {
+    final count = employees
+        .where((e) =>
+            (e.departmentName ?? '').toLowerCase() == d.name.toLowerCase())
+        .length;
+    buf.writeln('- ${d.name}: $count employees'
+        '${(d.description?.isNotEmpty ?? false) ? " — ${d.description}" : ""}');
   }
   buf.writeln();
 
@@ -116,23 +131,29 @@ final aiDataContextProvider = FutureProvider<String>((ref) async {
   }
   buf.writeln();
 
-  // Custom tables
+  // Custom tables — every table, every tab/sheet (attendance lives here).
   buf.writeln('=== CUSTOM TABLES (${tables.length}) ===');
-  var tableBudget = 600; // total row cap across all tables
+  var tableBudget = 1200; // total row cap across all tables/sheets
+  outer:
   for (final t in tables) {
-    buf.writeln('Table "${t.name}" [${t.columns.join(", ")}]:');
-    final rowCap = t.rows.length.clamp(0, 60);
-    for (final row in t.rows.take(rowCap)) {
-      if (tableBudget <= 0) break;
-      buf.writeln('  ${row.join(" | ")}');
-      tableBudget--;
-    }
-    if (t.rows.length > rowCap) {
-      buf.writeln('  ...(${t.rows.length - rowCap} more rows omitted)');
-    }
-    if (tableBudget <= 0) {
-      buf.writeln('...(remaining tables omitted to stay within size limits)');
-      break;
+    final sheetNames = t.sheets.map((s) => s.name).join(', ');
+    buf.writeln('Table "${t.name}" — tabs: [$sheetNames]');
+    for (final sheet in t.sheets) {
+      if (sheet.rows.isEmpty) continue;
+      buf.writeln('  Tab "${sheet.name}" [${sheet.columns.join(", ")}]:');
+      final rowCap = sheet.rows.length.clamp(0, 45);
+      for (final row in sheet.rows.take(rowCap)) {
+        if (tableBudget <= 0) {
+          buf.writeln('...(more table data omitted to stay within size limits; '
+              'ask about a specific person or word to search it all)');
+          break outer;
+        }
+        buf.writeln('    ${row.join(" | ")}');
+        tableBudget--;
+      }
+      if (sheet.rows.length > rowCap) {
+        buf.writeln('    ...(${sheet.rows.length - rowCap} more rows in this tab)');
+      }
     }
   }
 
@@ -210,5 +231,227 @@ Future<({String name, String dossier})?> employeeFocusedDossier(
     }
   }
 
+  // Most attendance is kept in the custom Tables (one column per person), not
+  // in Firestore — so pull this person's column(s) across every table/tab.
+  final tables = await ref.read(dataTablesProvider.future);
+  final tableAtt = personTableAttendance(tables, match);
+  if (tableAtt.isNotEmpty) b.write(tableAtt);
+
   return (name: match.fullName, dossier: b.toString());
+}
+
+/// Pull one person's attendance out of the custom Tables. Attendance tables use
+/// a matrix layout (a Date column + one column per employee), so we locate the
+/// person's column and read down it. For non-matrix tables we fall back to any
+/// row that mentions the person. Returns '' if nothing is found.
+String personTableAttendance(List<DataTableModel> tables, EmployeeModel emp) {
+  final fullL = emp.fullName.toLowerCase().trim();
+  final firstL = emp.firstName.toLowerCase().trim();
+  bool isMeta(String h) {
+    final v = h.trim().toLowerCase();
+    return v.isEmpty || v == 'date' || v == 'day' || v == 'working days';
+  }
+
+  bool headerMatches(String header) {
+    final h = header.trim().toLowerCase();
+    if (h == fullL) return true;
+    if (firstL.length > 2 && h.contains(firstL)) return true;
+    if (h.length > 2 && fullL.contains(h)) return true;
+    return false;
+  }
+
+  final buf = StringBuffer();
+  for (final t in tables) {
+    for (final sheet in t.sheets) {
+      final cols = sheet.columns;
+      final dateIdx =
+          cols.indexWhere((c) => c.trim().toLowerCase() == 'date');
+      final personCols = <int>[
+        for (var i = 0; i < cols.length; i++)
+          if (!isMeta(cols[i]) && headerMatches(cols[i])) i,
+      ];
+
+      if (personCols.isNotEmpty) {
+        for (final ci in personCols) {
+          final entries = <String>[];
+          var present = 0, late = 0, leave = 0, absent = 0;
+          for (final row in sheet.rows) {
+            final cell = ci < row.length ? row[ci].trim() : '';
+            if (cell.isEmpty) continue;
+            final bucket = classifyStatus(cell);
+            if (bucket == AttBucket.blank || bucket == AttBucket.off) continue;
+            final dateStr =
+                (dateIdx >= 0 && dateIdx < row.length) ? row[dateIdx].trim() : '';
+            entries.add('${dateStr.isEmpty ? "?" : dateStr}: $cell');
+            switch (bucket) {
+              case AttBucket.present:
+                present++;
+                break;
+              case AttBucket.late:
+                late++;
+                present++;
+                break;
+              case AttBucket.leave:
+                leave++;
+                break;
+              case AttBucket.absent:
+                absent++;
+                break;
+              default:
+                break;
+            }
+          }
+          if (entries.isEmpty) continue;
+          buf.writeln('• ${t.name} › ${sheet.name} (column "${cols[ci]}") — '
+              'present $present, late $late, leave $leave, absent $absent:');
+          for (final e in entries.take(70)) {
+            buf.writeln('   $e');
+          }
+          if (entries.length > 70) {
+            buf.writeln('   ...(${entries.length - 70} more days)');
+          }
+        }
+      } else {
+        // Non-matrix table: include rows that mention the person.
+        final hits = <String>[];
+        for (final row in sheet.rows) {
+          final hay = row.join(' ').toLowerCase();
+          if (hay.contains(fullL) ||
+              (firstL.length > 2 && hay.contains(firstL))) {
+            hits.add(row.where((c) => c.trim().isNotEmpty).join(' | '));
+          }
+        }
+        if (hits.isNotEmpty) {
+          buf.writeln('• ${t.name} › ${sheet.name} — mentioned in '
+              '${hits.length} row(s):');
+          for (final h in hits.take(20)) {
+            buf.writeln('   $h');
+          }
+        }
+      }
+    }
+  }
+  if (buf.isEmpty) return '';
+  return '\n--- Attendance & mentions from custom Tables ---\n$buf';
+}
+
+/// Standing "how to use this app" guide so the AI can answer how-to questions
+/// (create a table, add an employee, mark attendance, delete rows, …).
+const String aiAppGuide = '''
+=== APP GUIDE (how to do things in this app) ===
+NAVIGATION: The left sidebar (desktop) or bottom bar (mobile) switches modules: Dashboard, Employees, Attendance, Leave, Payroll, Tables, Documents, Settings.
+
+ADD AN EMPLOYEE: Employees module → "Add Employee" button (top-right) → fill name, department, role, salary, email, phone → Save. Click any employee row to view/edit their full profile, records and documents.
+
+CREATE A TABLE: Tables module → "New Table". For attendance use "New Attendance Workbook" — it auto-creates 12 month tabs, each pre-filled with that month's dates and day names. A table can hold several tabs (sheets); the tabs appear along the bottom.
+
+EDIT A TABLE: Open it and double-click a cell to type — it auto-saves every few seconds. Right-click a column header to rename it. "Fill Dates" auto-fills a month's date column; the totals toggle sums a numeric column.
+
+MARK ATTENDANCE: Open the department's attendance table, find today's Date row, and type the status under the person's column — Present, Absent, Leave, Late, or "-" for an off/holiday cell. The Dashboard and Attendance screens then show today's totals automatically. You can also ask me "mark <name> present today" and confirm.
+
+SELECT & DELETE ROWS: Click the checkbox in the "#" column to select a row. Ctrl-click (Cmd on Mac) adds scattered rows; Shift-click selects a range — exactly like Excel/Google Sheets. Then click "Delete N rows" or press the Delete key, and confirm.
+
+CREATE LEAVE: Leave module → "New Request" → pick the employee, leave type, dates and reason → Save. Or ask me "create a sick leave for <name> from <date> to <date>" and confirm.
+
+PAYROLL & PAYSLIP: Payroll module shows the current month's salaries (base, bonus, deductions, net). Open an employee to download their payslip as a PDF.
+
+DOCUMENTS: Open an employee → Documents → upload files such as CNIC, contract or certificates.
+=== END APP GUIDE ===''';
+
+// Tokens too generic to be useful as search terms (English + common Urdu).
+const Set<String> _searchStop = {
+  'the', 'and', 'for', 'with', 'show', 'list', 'tell', 'give', 'what', 'whats',
+  'who', 'whom', 'how', 'why', 'when', 'where', 'which', 'this', 'that', 'have',
+  'has', 'had', 'are', 'was', 'were', 'will', 'would', 'should', 'about', 'from',
+  'into', 'please', 'all', 'any', 'get', 'got', 'find', 'search', 'data',
+  'record', 'records', 'info', 'detail', 'details', 'total', 'name',
+  'kia', 'kya', 'kaun', 'kon', 'konsa', 'konsi', 'batao', 'bata', 'bataye',
+  'mujhe', 'muje', 'mera', 'meri', 'mere', 'hai', 'han', 'hain', 'liya', 'leya',
+  'wala', 'wali', 'karo', 'kary', 'kar', 'aur', 'our', 'phir', 'jo', 'tha',
+};
+
+bool _keepToken(String t) =>
+    t.length >= 3 || (t.length >= 2 && RegExp(r'^\d+$').hasMatch(t));
+
+List<String> _searchKeywords(String q) {
+  final out = <String>{};
+  for (final w in q.toLowerCase().split(RegExp(r'[^a-z0-9@._]+'))) {
+    final t = w.trim();
+    if (!_keepToken(t) || _searchStop.contains(t)) continue;
+    out.add(t);
+  }
+  return out.toList();
+}
+
+/// Keyword search across ALL data (employees, leave, payroll, departments and
+/// every cell of every custom table tab) so even a single stray word can be
+/// found. Returns the best-matching lines, or '' if nothing matches.
+Future<String> aiSearchMatches(WidgetRef ref, String question) async {
+  final keys = _searchKeywords(question);
+  if (keys.isEmpty) return '';
+
+  final hits = <({int score, String text})>[];
+  void consider(String text) {
+    final low = text.toLowerCase();
+    var score = 0;
+    for (final k in keys) {
+      if (low.contains(k)) score++;
+    }
+    if (score > 0) hits.add((score: score, text: text));
+  }
+
+  final dayFmt = DateFormat('dd-MMM-yyyy');
+
+  final employees = await ref.read(employeesProvider.future);
+  for (final e in employees) {
+    consider('EMPLOYEE ${e.fullName} | dept ${e.departmentName ?? "-"} | '
+        'role ${e.position ?? "-"} | ${e.email} | phone ${e.phone ?? "-"} | '
+        'cnic ${e.cnic ?? "-"} | salary ${e.salary?.toStringAsFixed(0) ?? "-"} | '
+        '${e.status.name}');
+  }
+
+  final leaves = await ref.read(leaveRequestsProvider.future);
+  for (final l in leaves) {
+    consider('LEAVE ${l.employeeName} | ${l.leaveType.name} ${l.days}d | '
+        '${dayFmt.format(l.startDate)}→${dayFmt.format(l.endDate)} | '
+        '${l.status.name}${(l.reason?.isNotEmpty ?? false) ? " | ${l.reason}" : ""}');
+  }
+
+  final payroll = await ref.read(payrollProvider.future);
+  for (final p in payroll) {
+    consider('PAYROLL ${p.employeeName} | ${p.month}/${p.year} | '
+        'net ${p.calculatedNet.toStringAsFixed(0)} | '
+        'base ${p.baseSalary.toStringAsFixed(0)} | '
+        'bonus ${p.bonuses.toStringAsFixed(0)} | '
+        'deduct ${p.deductions.toStringAsFixed(0)} | ${p.status.name}');
+  }
+
+  final departments = await ref.read(departmentsProvider.future);
+  for (final d in departments) {
+    consider('DEPARTMENT ${d.name}'
+        '${(d.description?.isNotEmpty ?? false) ? " | ${d.description}" : ""}');
+  }
+
+  final tables = await ref.read(dataTablesProvider.future);
+  for (final t in tables) {
+    for (final sheet in t.sheets) {
+      final cols = sheet.columns;
+      for (final row in sheet.rows) {
+        final parts = <String>[];
+        for (var i = 0; i < row.length; i++) {
+          final v = row[i].trim();
+          if (v.isEmpty) continue;
+          final col = i < cols.length ? cols[i] : 'col${i + 1}';
+          parts.add('$col=$v');
+        }
+        if (parts.isEmpty) continue;
+        consider('TABLE ${t.name}›${sheet.name}: ${parts.join(" | ")}');
+      }
+    }
+  }
+
+  if (hits.isEmpty) return '';
+  hits.sort((a, b) => b.score.compareTo(a.score));
+  final top = hits.take(90).map((e) => e.text).toList();
+  return '=== SEARCH MATCHES for "${question.trim()}" ===\n${top.join("\n")}';
 }
