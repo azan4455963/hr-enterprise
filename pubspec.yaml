@@ -52,6 +52,7 @@ dependencies:
   printing: ^5.13.4
   excel: ^4.0.6
   path_provider: ^2.1.5
+  web: ^1.1.0 # web-safe file downloads (browser anchor/blob)
 
   # Spreadsheet-style editable data grid (in-app tables)
   pluto_grid_plus: ^8.4.0

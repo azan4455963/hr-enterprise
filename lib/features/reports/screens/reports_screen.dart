@@ -1,13 +1,11 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
+import '../../../core/utils/file_saver.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../providers/auth_provider.dart';
@@ -40,10 +38,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _shareExcel(Uint8List bytes, String filename) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(bytes);
-    await Share.shareXFiles([XFile(file.path)], text: filename);
+    await saveBytes(
+      bytes,
+      filename,
+      mimeType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
   }
 
   @override
