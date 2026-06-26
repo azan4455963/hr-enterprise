@@ -78,6 +78,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     _active = i;
     _columns = [..._sheets[i].columns];
     _rows = _sheets[i].rows.map((r) => [...r]).toList();
+    if (_autoMapDays()) _dirty = true;
     _structureKey++;
   }
 
@@ -128,6 +129,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           _columns = [..._sheets[0].columns];
           _rows = _sheets[0].rows.map((r) => [...r]).toList();
           _tableName = table.name;
+          if (_autoMapDays()) _dirty = true;
           _loaded = true;
         }
 
@@ -389,6 +391,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       },
       onColumnsMoved: (_) => _applyColumnOrder(),
       onChanged: (e) {
+        _onCellChanged(e);
         if (!_dirty) setState(() => _dirty = true);
       },
       configuration: PlutoGridConfiguration(
@@ -545,6 +548,46 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       } catch (_) {/* next */}
     }
     return DateTime.tryParse(s);
+  }
+
+  /// Fill any empty Day cell from its row's Date, so the day name always
+  /// matches the date — survives table delete/recreate, paste, etc. Returns
+  /// true if anything changed.
+  bool _autoMapDays() {
+    final dateIdx = _dateTimeColumnIndex('date');
+    final dayIdx = _dayColumnIndex();
+    if (dateIdx < 0 || dayIdx < 0) return false;
+    var changed = false;
+    for (final r in _rows) {
+      if (dateIdx < r.length &&
+          dayIdx < r.length &&
+          r[dayIdx].trim().isEmpty) {
+        final d = _tryParseDate(r[dateIdx]);
+        if (d != null) {
+          r[dayIdx] = DateFormat('EEEE').format(d);
+          changed = true;
+        }
+      }
+    }
+    return changed;
+  }
+
+  /// When a Date cell is edited, fill that row's empty Day cell from it.
+  void _onCellChanged(PlutoGridOnChangedEvent e) {
+    final sm = _sm;
+    if (sm == null) return;
+    final dateIdx = _dateTimeColumnIndex('date');
+    final dayIdx = _dayColumnIndex();
+    if (dateIdx < 0 || dayIdx < 0) return;
+    if (e.column.field != _field(dateIdx)) return; // only when Date edited
+    final d = _tryParseDate(e.value?.toString() ?? '');
+    if (d == null) return;
+    final dayCell = e.row.cells[_field(dayIdx)];
+    if (dayCell == null) return;
+    if (dayCell.value?.toString().trim().isEmpty ?? true) {
+      sm.changeCellValue(dayCell, DateFormat('EEEE').format(d),
+          callOnChangedEvent: false, notify: true);
+    }
   }
 
   /// Auto-fills the Date / Day / Time columns of a new row. The date continues
@@ -841,6 +884,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           _rows.add(row);
         }
       }
+      _autoMapDays();
       _dirty = true;
       _structureKey++;
     });
