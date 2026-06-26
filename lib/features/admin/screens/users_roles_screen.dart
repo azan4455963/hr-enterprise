@@ -125,15 +125,36 @@ class _UserCard extends ConsumerWidget {
               )
             else
               PopupMenuButton<String>(
+                tooltip: 'Options',
+                icon: const Icon(Icons.more_vert_rounded,
+                    color: AppColors.textMuted),
                 onSelected: (v) => _onAction(context, ref, v),
                 itemBuilder: (_) => [
                   const PopupMenuItem(
-                      value: 'role', child: Text('Change role')),
+                    value: 'role',
+                    child: Row(children: [
+                      Icon(Icons.badge_outlined, size: 18),
+                      SizedBox(width: 10),
+                      Text('Change role'),
+                    ]),
+                  ),
                   PopupMenuItem(
                     value: 'toggle',
-                    child: Text(user.isActive
-                        ? 'Disable account'
-                        : 'Enable account'),
+                    child: Row(children: [
+                      Icon(
+                        user.isActive
+                            ? Icons.block_rounded
+                            : Icons.check_circle_outline,
+                        size: 18,
+                        color: user.isActive
+                            ? AppColors.error
+                            : AppColors.success,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(user.isActive
+                          ? 'Disable account'
+                          : 'Enable account'),
+                    ]),
                   ),
                 ],
               ),

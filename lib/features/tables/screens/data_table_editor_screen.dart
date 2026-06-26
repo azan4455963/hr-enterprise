@@ -462,32 +462,68 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     return -1;
   }
 
-  /// Returns today's day name (e.g., "Monday"), date (e.g., "22-Jun-2026"),
-  /// and time (e.g., "14:30").
-  (String day, String date, String time) _now() {
-    final now = DateTime.now();
-    final day = DateFormat('EEEE').format(now);
-    final date = DateFormat('dd-MMM-yyyy').format(now);
-    final time = DateFormat('HH:mm').format(now);
-    return (day, date, time);
+  /// Finds the "Day" column — matches "Day", "Days", "Working Day(s)".
+  int _dayColumnIndex() {
+    for (var i = 0; i < _columns.length; i++) {
+      final words = _columns[i]
+          .trim()
+          .toLowerCase()
+          .split(RegExp(r'[\s/_\-]+'))
+          .where((w) => w.isNotEmpty);
+      if (words.contains('day') || words.contains('days')) return i;
+    }
+    return -1;
   }
 
-  /// Auto-fills the "Day", "Date", and "Time" columns in the given row with the
-  /// current values, if those columns exist (and the cell is still empty).
+  /// Try to parse a date cell ("01-Jun-2026", "06/01/2026", ISO, …).
+  DateTime? _tryParseDate(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return null;
+    for (final f in const [
+      'dd-MMM-yyyy', 'd-MMM-yyyy', 'dd-MM-yyyy',
+      'MM/dd/yyyy', 'dd/MM/yyyy', 'yyyy-MM-dd',
+    ]) {
+      try {
+        return DateFormat(f).parseStrict(s);
+      } catch (_) {/* next */}
+    }
+    return DateTime.tryParse(s);
+  }
+
+  /// Auto-fills the Date / Day / Time columns of a new row. The date continues
+  /// the sequence (day after the last dated row, else today); the day name and
+  /// time match. Only fills empty cells.
   void _fillDayDateTime(List<String> row) {
-    final dayIdx = _dateTimeColumnIndex('day');
+    final dayIdx = _dayColumnIndex();
     final dateIdx = _dateTimeColumnIndex('date');
     final timeIdx = _dateTimeColumnIndex('time');
     if (dayIdx < 0 && dateIdx < 0 && timeIdx < 0) return;
-    final (day, date, time) = _now();
-    if (dayIdx >= 0 && dayIdx < row.length && row[dayIdx].isEmpty) {
-      row[dayIdx] = day;
+
+    // Sequential date: next day after the last filled date, else today.
+    var target = DateTime.now();
+    if (dateIdx >= 0) {
+      DateTime? last;
+      for (final r in _rows) {
+        if (dateIdx < r.length) {
+          final d = _tryParseDate(r[dateIdx]);
+          if (d != null) last = d;
+        }
+      }
+      if (last != null) target = last.add(const Duration(days: 1));
     }
+
+    final dayName = DateFormat('EEEE').format(target);
+    final dateStr = DateFormat('dd-MMM-yyyy').format(target);
+    final timeStr = DateFormat('HH:mm').format(DateTime.now());
+
     if (dateIdx >= 0 && dateIdx < row.length && row[dateIdx].isEmpty) {
-      row[dateIdx] = date;
+      row[dateIdx] = dateStr;
+    }
+    if (dayIdx >= 0 && dayIdx < row.length && row[dayIdx].isEmpty) {
+      row[dayIdx] = dayName;
     }
     if (timeIdx >= 0 && timeIdx < row.length && row[timeIdx].isEmpty) {
-      row[timeIdx] = time;
+      row[timeIdx] = timeStr;
     }
   }
 
