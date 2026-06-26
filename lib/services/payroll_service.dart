@@ -35,6 +35,23 @@ class PayrollService {
     return ref.id;
   }
 
+  /// Bulk-create payroll records (e.g. generating a whole month) in one batch.
+  /// Returns the number written.
+  Future<int> createMany(List<PayrollModel> records) async {
+    if (records.isEmpty) return 0;
+    final batch = _firestore.batch();
+    for (final r in records) {
+      batch.set(_collection.doc(), r.toMap());
+    }
+    await batch.commit();
+    return records.length;
+  }
+
+  /// Overwrite an existing record (recomputes netSalary via toMap()).
+  Future<void> update(PayrollModel payroll) async {
+    await _collection.doc(payroll.id).update(payroll.toMap());
+  }
+
   Future<void> updateStatus(String id, PaymentStatus status) async {
     await _collection.doc(id).update({
       'status': status.name,

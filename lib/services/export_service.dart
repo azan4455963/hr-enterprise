@@ -222,6 +222,25 @@ class ExportService {
     return doc.save();
   }
 
+  /// Build + share/print one employee's payslip for a month (web-safe via
+  /// printing's share sheet / browser print).
+  Future<void> sharePayslipPdf({
+    required EmployeeModel employee,
+    required PayrollModel payroll,
+    required String companyName,
+  }) async {
+    final bytes = await buildPayslipPdf(
+      employee: employee,
+      payroll: payroll,
+      companyName: companyName,
+    );
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename:
+          'payslip_${employee.fullName.replaceAll(' ', '_')}_${payroll.month}-${payroll.year}.pdf',
+    );
+  }
+
   /// Full single-employee profile report: details, attendance, leave & payroll.
   Future<Uint8List> buildEmployeeProfilePdf({
     required EmployeeModel employee,
@@ -432,7 +451,7 @@ class ExportService {
         build: (context) => [
           pw.Header(level: 0, child: pw.Text('Attendance Report')),
           pw.SizedBox(height: 12),
-          pw.Table.fromTextArray(
+          pw.TableHelper.fromTextArray(
             headers: ['Employee', 'Date', 'Check In', 'Check Out', 'Status', 'Method'],
             data: records
                 .map(
@@ -470,7 +489,7 @@ class ExportService {
       pw.MultiPage(
         build: (context) => [
           pw.Header(level: 0, child: pw.Text('Employee Report')),
-          pw.Table.fromTextArray(
+          pw.TableHelper.fromTextArray(
             headers: headers,
             data: employees
                 .map(
@@ -500,7 +519,7 @@ class ExportService {
       pw.MultiPage(
         build: (context) => [
           pw.Header(level: 0, child: pw.Text('Payroll Report')),
-          pw.Table.fromTextArray(
+          pw.TableHelper.fromTextArray(
             headers: [
               'Employee',
               'Month',
