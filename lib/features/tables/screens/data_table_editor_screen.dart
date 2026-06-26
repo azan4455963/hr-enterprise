@@ -47,6 +47,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   // Excel-style row selection (click #, Ctrl/Shift) for bulk delete.
   final Set<int> _selectedRows = {};
   int? _selectAnchor;
+  // View-only filter. While a filter is active the grid is READ-ONLY and
+  // [_syncFromGrid] is skipped, so the save path is never fed a filtered
+  // subset of rows (which would otherwise delete the hidden rows).
+  final TextEditingController _filterCtrl = TextEditingController();
+  String _filter = '';
 
   @override
   void initState() {
@@ -60,6 +65,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   @override
   void dispose() {
     _autoSave?.cancel();
+    _filterCtrl.dispose();
     super.dispose();
   }
 
@@ -83,6 +89,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     _rows = _sheets[i].rows.map((r) => [...r]).toList();
     _selectedRows.clear();
     _selectAnchor = null;
+    _filter = '';
+    _filterCtrl.clear();
     if (_autoMapDays()) _dirty = true;
     _structureKey++;
   }
@@ -95,8 +103,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     });
   }
 
-  /// Pull the grid's current values back into [_rows] (reflects edits + sort).
+  /// Pull the grid's current values back into [_rows] (reflects edits).
+  /// IMPORTANT: never runs while a filter is active — the grid then shows only
+  /// a subset of rows, so reading it back would drop the hidden ones.
   void _syncFromGrid() {
+    if (_filter.trim().isNotEmpty) return;
     final sm = _sm;
     if (sm == null) return;
     _rows = [
@@ -198,6 +209,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   }
 
   Widget _toolbar() {
+    final filterActive = _filter.trim().isNotEmpty;
     return Container(
       width: double.infinity,
       color: AppColors.surface,
@@ -207,77 +219,249 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          GhostButton(
-            label: 'Add Column',
-            icon: Icons.view_column_outlined,
-            onPressed: _addColumn,
-          ),
-          GhostButton(
-            label: 'Edit Columns',
-            icon: Icons.edit_note_rounded,
-            onPressed: _columns.isEmpty ? () {} : _editColumns,
-          ),
-          GhostButton(
-            label: 'Add Row',
-            icon: Icons.table_rows_outlined,
-            onPressed: _columns.isEmpty ? () {} : () => _addRows(1),
-          ),
-          GhostButton(
-            label: 'Add 10 Rows',
-            icon: Icons.playlist_add_rounded,
-            onPressed: _columns.isEmpty ? () {} : () => _addRows(10),
-          ),
-          GhostButton(
-            label: 'Fill Dates',
-            icon: Icons.event_note_rounded,
-            onPressed: _columns.isEmpty ? () {} : _fillMonthDates,
-          ),
-          GhostButton(
-            label: _showTotals ? 'Hide Totals' : 'Totals',
-            icon: Icons.functions_rounded,
-            onPressed: _columns.isEmpty
-                ? () {}
-                : () => setState(() {
-                      _showTotals = !_showTotals;
-                      _structureKey++;
-                    }),
-          ),
-          GhostButton(
-            label: 'Select All',
-            icon: Icons.select_all_rounded,
-            onPressed: _columns.isEmpty ? () {} : _selectAll,
-          ),
-          if (_selectedRows.isNotEmpty)
-            PrimaryButton(
-              label: 'Delete ${_selectedRows.length} row'
-                  '${_selectedRows.length == 1 ? "" : "s"}',
-              icon: Icons.delete_outline_rounded,
-              color: AppColors.error,
-              onPressed: _deleteSelectedRows,
+          // Editing tools are hidden while filtering (the filtered view is
+          // read-only) so a partial view can never be saved.
+          if (!filterActive) ...[
+            GhostButton(
+              label: 'Add Column',
+              icon: Icons.view_column_outlined,
+              onPressed: _addColumn,
             ),
-          GhostButton(
-            label: 'Paste',
-            icon: Icons.content_paste_rounded,
-            onPressed: _pasteFromClipboard,
-          ),
-          GhostButton(
-            label: 'Export PDF',
-            icon: Icons.picture_as_pdf_outlined,
-            onPressed: _columns.isEmpty ? () {} : _exportPdf,
-          ),
-          GhostButton(
-            label: 'Copy CSV',
-            icon: Icons.copy_all_rounded,
-            onPressed: _columns.isEmpty ? () {} : _copyCsv,
-          ),
+            GhostButton(
+              label: 'Edit Columns',
+              icon: Icons.edit_note_rounded,
+              onPressed: _columns.isEmpty ? () {} : _editColumns,
+            ),
+            GhostButton(
+              label: 'Add Row',
+              icon: Icons.table_rows_outlined,
+              onPressed: _columns.isEmpty ? () {} : () => _addRows(1),
+            ),
+            GhostButton(
+              label: 'Add 10 Rows',
+              icon: Icons.playlist_add_rounded,
+              onPressed: _columns.isEmpty ? () {} : () => _addRows(10),
+            ),
+            GhostButton(
+              label: 'Fill Dates',
+              icon: Icons.event_note_rounded,
+              onPressed: _columns.isEmpty ? () {} : _fillMonthDates,
+            ),
+            GhostButton(
+              label: 'Sort',
+              icon: Icons.swap_vert_rounded,
+              onPressed: _columns.isEmpty ? () {} : _showSortDialog,
+            ),
+            GhostButton(
+              label: _showTotals ? 'Hide Totals' : 'Totals',
+              icon: Icons.functions_rounded,
+              onPressed: _columns.isEmpty
+                  ? () {}
+                  : () => setState(() {
+                        _showTotals = !_showTotals;
+                        _structureKey++;
+                      }),
+            ),
+            GhostButton(
+              label: 'Select All',
+              icon: Icons.select_all_rounded,
+              onPressed: _columns.isEmpty ? () {} : _selectAll,
+            ),
+            if (_selectedRows.isNotEmpty)
+              PrimaryButton(
+                label: 'Delete ${_selectedRows.length} row'
+                    '${_selectedRows.length == 1 ? "" : "s"}',
+                icon: Icons.delete_outline_rounded,
+                color: AppColors.error,
+                onPressed: _deleteSelectedRows,
+              ),
+            GhostButton(
+              label: 'Paste',
+              icon: Icons.content_paste_rounded,
+              onPressed: _pasteFromClipboard,
+            ),
+            GhostButton(
+              label: 'Export PDF',
+              icon: Icons.picture_as_pdf_outlined,
+              onPressed: _columns.isEmpty ? () {} : _exportPdf,
+            ),
+            GhostButton(
+              label: 'Copy CSV',
+              icon: Icons.copy_all_rounded,
+              onPressed: _columns.isEmpty ? () {} : _copyCsv,
+            ),
+          ],
+          _searchField(),
+          if (filterActive)
+            const Text(
+              'Filtered — read-only. Clear to edit.',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.warning,
+                  fontWeight: FontWeight.w600),
+            ),
           const SizedBox(width: 4),
           Text(
-            '${_rows.length} rows · ${_columns.length} cols',
+            filterActive
+                ? '${_matchCount()} of ${_rows.length} rows'
+                : '${_rows.length} rows · ${_columns.length} cols',
             style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
           ),
         ],
       ),
     );
+  }
+
+  Widget _searchField() {
+    return SizedBox(
+      width: 210,
+      height: 34,
+      child: TextField(
+        controller: _filterCtrl,
+        style: const TextStyle(fontSize: 13),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Filter rows…',
+          hintStyle: const TextStyle(fontSize: 13),
+          prefixIcon: const Icon(Icons.search_rounded, size: 16),
+          suffixIcon: _filter.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  splashRadius: 16,
+                  onPressed: _clearFilter,
+                ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        onChanged: (v) {
+          // Capture any pending grid edit BEFORE the view filters (the guard in
+          // _syncFromGrid only blocks once _filter is already set), so editing a
+          // cell then immediately filtering never loses that edit.
+          _syncFromGrid();
+          setState(() {
+            _filter = v;
+            _selectedRows.clear();
+            _selectAnchor = null;
+            _structureKey++;
+          });
+        },
+      ),
+    );
+  }
+
+  void _clearFilter() {
+    setState(() {
+      _filter = '';
+      _filterCtrl.clear();
+      _structureKey++;
+    });
+  }
+
+  bool _matchesFilter(List<String> row, String q) =>
+      row.any((c) => c.toLowerCase().contains(q));
+
+  int _matchCount() {
+    final q = _filter.trim().toLowerCase();
+    if (q.isEmpty) return _rows.length;
+    return _rows.where((r) => _matchesFilter(r, q)).length;
+  }
+
+  // ── Sort (explicit; reorders whole rows — only order changes, never data) ──
+  Future<void> _showSortDialog() async {
+    if (_columns.isEmpty) return;
+    var col = 0;
+    var asc = true;
+    final res = await showDialog<({int col, bool asc})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Sort rows',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                initialValue: col,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Sort by column'),
+                items: [
+                  for (var i = 0; i < _columns.length; i++)
+                    DropdownMenuItem(value: i, child: Text(_columns[i])),
+                ],
+                onChanged: (v) => setLocal(() => col = v ?? 0),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Ascending'),
+                      selected: asc,
+                      onSelected: (_) => setLocal(() => asc = true),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('Descending'),
+                      selected: !asc,
+                      onSelected: (_) => setLocal(() => asc = false),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            PrimaryButton(
+              label: 'Sort',
+              onPressed: () => Navigator.pop(ctx, (col: col, asc: asc)),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (res == null) return;
+    _sortByColumn(res.col, res.asc);
+  }
+
+  /// Reorder [_rows] by a column. Rows move as whole units, so each row keeps
+  /// its own cells together — only the order changes, never the data.
+  void _sortByColumn(int col, bool asc) {
+    _syncFromGrid();
+    setState(() {
+      _rows.sort((a, b) {
+        final av = col < a.length ? a[col] : '';
+        final bv = col < b.length ? b[col] : '';
+        final cmp = _smartCompare(av, bv);
+        return asc ? cmp : -cmp;
+      });
+      _dirty = true;
+      _structureKey++;
+    });
+    _snack('Sorted by "${_columns[col]}" (${asc ? "A→Z" : "Z→A"}).');
+  }
+
+  /// Compare two cell strings: numbers numerically, dates by date, blanks last,
+  /// otherwise case-insensitive text.
+  int _smartCompare(String a, String b) {
+    final at = a.trim(), bt = b.trim();
+    if (at.isEmpty && bt.isEmpty) return 0;
+    if (at.isEmpty) return 1; // blanks sink to the bottom
+    if (bt.isEmpty) return -1;
+    final na = num.tryParse(at.replaceAll(',', ''));
+    final nb = num.tryParse(bt.replaceAll(',', ''));
+    if (na != null && nb != null) return na.compareTo(nb);
+    final da = _tryParseDate(at);
+    final db = _tryParseDate(bt);
+    if (da != null && db != null) return da.compareTo(db);
+    return at.toLowerCase().compareTo(bt.toLowerCase());
   }
 
   Widget _emptyState() {
@@ -332,6 +516,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
 
   Widget _grid() {
     _computeAttendanceMeta();
+    final filterActive = _filter.trim().isNotEmpty;
+    final q = _filter.trim().toLowerCase();
+    // The rows to display, each tagged with its original index into [_rows] so
+    // selection/delete stay correct even when the view is filtered.
+    final displayPairs = <({int idx, List<String> row})>[
+      for (var i = 0; i < _rows.length; i++)
+        if (!filterActive || _matchesFilter(_rows[i], q)) (idx: i, row: _rows[i]),
+    ];
     final columns = <PlutoColumn>[
       // Row-number + delete column (Excel-style row header).
       PlutoColumn(
@@ -346,13 +538,23 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         enableSorting: false,
         backgroundColor: const Color(0xFFF1F5F9),
         renderer: (ctx) {
-          final selected = _selectedRows.contains(ctx.rowIdx);
+          final origIdx =
+              int.tryParse(ctx.cell.value?.toString() ?? '') ?? ctx.rowIdx;
+          // While filtering the grid is read-only — just show the row number.
+          if (_filter.trim().isNotEmpty) {
+            return Center(
+              child: Text('${origIdx + 1}',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textFaint)),
+            );
+          }
+          final selected = _selectedRows.contains(origIdx);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => _toggleRowSelect(ctx.rowIdx),
+            onTap: () => _toggleRowSelect(origIdx),
             onSecondaryTapDown: (d) {
-              if (!_selectedRows.contains(ctx.rowIdx)) {
-                _toggleRowSelect(ctx.rowIdx, forceSingle: true);
+              if (!_selectedRows.contains(origIdx)) {
+                _toggleRowSelect(origIdx, forceSingle: true);
               }
               _rowContextMenu(d.globalPosition);
             },
@@ -367,7 +569,7 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
                   color: selected ? AppColors.brandBlue : AppColors.textFaint,
                 ),
                 Text(
-                  '${ctx.rowIdx + 1}',
+                  '${origIdx + 1}',
                   style: const TextStyle(
                       fontSize: 11, color: AppColors.textMuted),
                 ),
@@ -392,18 +594,20 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           enableRowDrag: false,
           enableContextMenu: true,
           enableSorting: false,
+          enableEditingMode: !filterActive, // read-only while filtering
           enableDropToResize: true,
           renderer: _statusRenderer,
           footerRenderer: _showTotals ? _columnFooter : null,
         ),
     ];
     final rows = <PlutoRow>[
-      for (final r in _rows)
+      for (final p in displayPairs)
         PlutoRow(
           cells: {
-            'actions': PlutoCell(value: ''),
+            // Carry the original row index so the header renderer can map back.
+            'actions': PlutoCell(value: '${p.idx}'),
             for (var i = 0; i < _columns.length; i++)
-              _field(i): PlutoCell(value: i < r.length ? r[i] : ''),
+              _field(i): PlutoCell(value: i < p.row.length ? p.row[i] : ''),
           },
         ),
     ];
@@ -745,11 +949,16 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       ),
     );
     if (confirmed != true) return;
-    ctx.stateManager.removeRows([ctx.row]);
+    _syncFromGrid();
+    final origIdx =
+        int.tryParse(ctx.row.cells['actions']?.value?.toString() ?? '') ??
+            ctx.rowIdx;
     setState(() {
+      if (origIdx >= 0 && origIdx < _rows.length) _rows.removeAt(origIdx);
       _selectedRows.clear();
       _selectAnchor = null;
       _dirty = true;
+      _structureKey++;
     });
     _snack('Row deleted.');
   }
