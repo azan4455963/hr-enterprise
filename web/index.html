@@ -51,5 +51,36 @@
       });
     }
   </script>
+
+  <script>
+    // Auto-update: every 2 minutes, check version.json. If a newer build has
+    // been deployed, reload so every user gets the latest automatically —
+    // no manual refresh needed.
+    (function () {
+      var loaded = null;
+      function fp(v) { return (v.version || '') + '+' + (v.build_number || ''); }
+      function banner() {
+        if (document.getElementById('app-update-banner')) return;
+        var b = document.createElement('div');
+        b.id = 'app-update-banner';
+        b.textContent = 'Updating to the latest version…';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;' +
+          'background:#1E3A8A;color:#fff;font:600 13px sans-serif;padding:10px;text-align:center';
+        document.body.appendChild(b);
+      }
+      function check() {
+        fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (v) {
+            var f = fp(v);
+            if (loaded === null) { loaded = f; return; }
+            if (f !== loaded) { banner(); setTimeout(function () { location.reload(); }, 1500); }
+          })
+          .catch(function () {});
+      }
+      setInterval(check, 120000);
+      check();
+    })();
+  </script>
 </body>
 </html>

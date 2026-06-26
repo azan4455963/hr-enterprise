@@ -31,7 +31,9 @@ jobs:
         run: printf '%s' "$FIREBASE_SECRETS_DART" > lib/firebase_secrets.dart
 
       - name: Build web
-        run: flutter build web --release
+        # Unique build number per run so version.json changes every deploy,
+        # which the in-app auto-updater detects.
+        run: flutter build web --release --build-number ${{ github.run_number }}
 
       - name: Deploy to Firebase Hosting (live)
         env:
