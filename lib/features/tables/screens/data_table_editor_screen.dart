@@ -401,7 +401,18 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   Widget _statusRenderer(PlutoColumnRendererContext ctx) {
     final v = ctx.cell.value?.toString() ?? '';
     final sc = _statusColor(v);
-    if (sc == null) return Text(v, overflow: TextOverflow.ellipsis);
+    if (sc == null) {
+      // Plain text / numbers — force a dark colour so cells are always
+      // readable (the default can render white/invisible).
+      return Text(
+        v,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+            fontSize: 12.5,
+            color: AppColors.textBody,
+            fontWeight: FontWeight.w500),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
