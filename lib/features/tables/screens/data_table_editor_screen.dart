@@ -40,6 +40,10 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   PlutoGridStateManager? _sm;
   Timer? _autoSave;
   bool _showTotals = false;
+  // Attendance highlighting: which columns are employees (not Date/Day) and
+  // whether this looks like an attendance table (has a Date column).
+  bool _isAttendance = false;
+  Set<int> _employeeCols = {};
 
   @override
   void initState() {
@@ -292,7 +296,27 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     );
   }
 
+  /// Detect attendance layout (has a Date column) and which columns are
+  /// employees (everything except Date / Day / Working Days). Used to grey-out
+  /// empty (off/holiday) employee cells.
+  void _computeAttendanceMeta() {
+    Set<String> wordsOf(String h) =>
+        h.trim().toLowerCase().split(RegExp(r'[\s/_\-]+')).toSet();
+    bool isDateOrDay(String h) {
+      final w = wordsOf(h);
+      return w.contains('date') || w.contains('day') || w.contains('days');
+    }
+
+    _isAttendance =
+        _columns.any((c) => wordsOf(c).contains('date'));
+    _employeeCols = {
+      for (var i = 0; i < _columns.length; i++)
+        if (!isDateOrDay(_columns[i])) i,
+    };
+  }
+
   Widget _grid() {
+    _computeAttendanceMeta();
     final columns = <PlutoColumn>[
       // Row-number + delete column (Excel-style row header).
       PlutoColumn(
@@ -400,6 +424,32 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
 
   Widget _statusRenderer(PlutoColumnRendererContext ctx) {
     final v = ctx.cell.value?.toString() ?? '';
+    final t = v.trim();
+
+    // Off / holiday: an empty (or "-") employee cell in an attendance table.
+    final field = ctx.column.field;
+    final colIdx =
+        field.startsWith('c') ? int.tryParse(field.substring(1)) ?? -1 : -1;
+    final isEmployeeCell =
+        _isAttendance && colIdx >= 0 && _employeeCols.contains(colIdx);
+    if (isEmployeeCell &&
+        (t.isEmpty || t == '-' || t == '–' || t == '—')) {
+      return Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE9EDF2),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: const Text('Off',
+            style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textFaint,
+                fontWeight: FontWeight.w600)),
+      );
+    }
+
     final sc = _statusColor(v);
     if (sc == null) {
       // Plain text / numbers — force a dark colour so cells are always
