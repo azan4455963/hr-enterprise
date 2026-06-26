@@ -381,21 +381,26 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     });
     _scrollToEnd();
     try {
-      // Context = a keyword search (so any stray word can be found) plus either
-      // the named person's full dossier or the overall HR snapshot.
+      // Build a *small* context (some providers cap tokens/minute):
+      // • a named person → just their self-contained dossier;
+      // • otherwise → a keyword search + the compact overview snapshot.
       final focused = await employeeFocusedDossier(ref, text);
-      final search = await aiSearchMatches(ref, text);
-      final base = focused != null
-          ? focused.dossier
-          : await ref.read(aiDataContextProvider.future);
-      final data = [
-        if (search.isNotEmpty) search,
-        base,
-      ].join('\n\n');
+      final String data;
+      if (focused != null) {
+        data = focused.dossier;
+      } else {
+        final search = await aiSearchMatches(ref, text);
+        final base = await ref.read(aiDataContextProvider.future);
+        data = [if (search.isNotEmpty) search, base].join('\n\n');
+      }
+      // Only send the last several turns so the context doesn't keep growing.
+      final history = _messages.length > 12
+          ? _messages.sublist(_messages.length - 12)
+          : _messages;
       final reply = await ref.read(aiAssistantServiceProvider).chat(
             config: widget.config,
-            systemPrompt: _systemPrompt(data),
-            messages: _messages,
+            systemPrompt: _systemPrompt(data, includeGuide: _looksLikeHowTo(text)),
+            messages: history,
           );
       if (!mounted) return;
 
@@ -418,7 +423,22 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     }
   }
 
-  String _systemPrompt(String data) {
+  /// True when the message looks like a "how do I…" question (English/Urdu),
+  /// so we only attach the app guide (and its tokens) when it's relevant.
+  bool _looksLikeHowTo(String q) {
+    final l = q.toLowerCase();
+    return l.startsWith('how') ||
+        l.contains('how ') ||
+        l.contains('kaise') ||
+        l.contains('kese') ||
+        l.contains('kesy') ||
+        l.contains('kaisy') ||
+        l.contains('tarika') ||
+        l.contains('tariqa') ||
+        l.contains('tareeqa');
+  }
+
+  String _systemPrompt(String data, {bool includeGuide = false}) {
     return 'You are the built-in HR Assistant inside an HR management app. You '
         'help the admin in two ways:\n'
         '1) ANSWER QUESTIONS about the HR data below — employees, departments, '
@@ -428,8 +448,9 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         'so look there too. Use the SEARCH MATCHES section to find any specific '
         'word the user asks about. If something is genuinely not present, say '
         'you could not find it — never invent records, names or numbers.\n'
-        '2) EXPLAIN HOW TO USE THE APP from the APP GUIDE below (add an '
-        'employee, make a table, mark attendance, delete rows, etc.).\n\n'
+        '2) EXPLAIN HOW TO USE THE APP — for how-to questions an APP GUIDE is '
+        'included below; use it (add an employee, make a table, mark '
+        'attendance, delete rows, etc.).\n\n'
         'SAFETY: You can never change or delete data on your own. The only '
         'actions you may request are the two below, and the app ALWAYS asks the '
         'user to confirm before anything is saved. Never claim you have already '
@@ -445,7 +466,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         '{"action":"create_leave","employee":"<full name>","type":"sick|casual|annual|unpaid|other","from":"YYYY-MM-DD","to":"YYYY-MM-DD","reason":"<short reason>"}\n'
         '```\n'
         'For every other request, answer normally (no action block).\n\n'
-        '$aiAppGuide\n\n'
+        '${includeGuide ? "$aiAppGuide\n\n" : ""}'
         '--- HR DATA SNAPSHOT ---\n$data\n--- END DATA ---';
   }
 

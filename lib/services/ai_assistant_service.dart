@@ -150,6 +150,7 @@ class AiAssistantService {
       headers: _openAiHeaders(c.apiKey),
       body: jsonEncode({
         'model': c.model,
+        'max_tokens': 1024,
         'messages': [
           {'role': 'system', 'content': system},
           for (final m in msgs) {'role': m.role, 'content': m.content},
@@ -231,6 +232,10 @@ class AiAssistantService {
     } catch (_) {/* keep default */}
     if (res.statusCode == 401 || res.statusCode == 403) {
       message = 'Invalid or unauthorised API key. $message';
+    } else if (res.statusCode == 429 || res.statusCode == 413) {
+      message = '$message\n\nTip: this provider limits how many tokens you can '
+          'send per minute. Ask about one person or topic at a time, wait a few '
+          'seconds and retry, or use a higher-tier/paid model.';
     }
     throw AiException(message);
   }

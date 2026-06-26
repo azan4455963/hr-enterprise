@@ -131,31 +131,19 @@ final aiDataContextProvider = FutureProvider<String>((ref) async {
   }
   buf.writeln();
 
-  // Custom tables — every table, every tab/sheet (attendance lives here).
+  // Custom tables — directory only (names, tabs, columns, row counts). The
+  // actual rows/cells are surfaced on demand via SEARCH MATCHES (any word) or
+  // the focused dossier (a named person), which keeps this snapshot small.
   buf.writeln('=== CUSTOM TABLES (${tables.length}) ===');
-  var tableBudget = 1200; // total row cap across all tables/sheets
-  outer:
   for (final t in tables) {
-    final sheetNames = t.sheets.map((s) => s.name).join(', ');
-    buf.writeln('Table "${t.name}" — tabs: [$sheetNames]');
+    buf.writeln('Table "${t.name}":');
     for (final sheet in t.sheets) {
-      if (sheet.rows.isEmpty) continue;
-      buf.writeln('  Tab "${sheet.name}" [${sheet.columns.join(", ")}]:');
-      final rowCap = sheet.rows.length.clamp(0, 45);
-      for (final row in sheet.rows.take(rowCap)) {
-        if (tableBudget <= 0) {
-          buf.writeln('...(more table data omitted to stay within size limits; '
-              'ask about a specific person or word to search it all)');
-          break outer;
-        }
-        buf.writeln('    ${row.join(" | ")}');
-        tableBudget--;
-      }
-      if (sheet.rows.length > rowCap) {
-        buf.writeln('    ...(${sheet.rows.length - rowCap} more rows in this tab)');
-      }
+      buf.writeln('  Tab "${sheet.name}" — ${sheet.rows.length} rows, '
+          'columns: [${sheet.columns.join(", ")}]');
     }
   }
+  buf.writeln('(Row-level table data is provided in the SEARCH MATCHES section '
+      'when you ask about a specific name, date or word.)');
 
   return buf.toString();
 });
@@ -260,7 +248,13 @@ String personTableAttendance(List<DataTableModel> tables, EmployeeModel emp) {
     return false;
   }
 
-  final buf = StringBuffer();
+  // Collect per-tab summary counts (always) + every dated day entry (so we can
+  // keep only the most-recent N and stay small for low-token providers).
+  final summaries = <String>[];
+  final dayEntries =
+      <({DateTime? date, String label})>[]; // label = "dd-MMM: status [tab]"
+  final mentions = <String>[];
+
   for (final t in tables) {
     for (final sheet in t.sheets) {
       final cols = sheet.columns;
@@ -273,8 +267,7 @@ String personTableAttendance(List<DataTableModel> tables, EmployeeModel emp) {
 
       if (personCols.isNotEmpty) {
         for (final ci in personCols) {
-          final entries = <String>[];
-          var present = 0, late = 0, leave = 0, absent = 0;
+          var present = 0, late = 0, leave = 0, absent = 0, count = 0;
           for (final row in sheet.rows) {
             final cell = ci < row.length ? row[ci].trim() : '';
             if (cell.isEmpty) continue;
@@ -282,7 +275,11 @@ String personTableAttendance(List<DataTableModel> tables, EmployeeModel emp) {
             if (bucket == AttBucket.blank || bucket == AttBucket.off) continue;
             final dateStr =
                 (dateIdx >= 0 && dateIdx < row.length) ? row[dateIdx].trim() : '';
-            entries.add('${dateStr.isEmpty ? "?" : dateStr}: $cell');
+            dayEntries.add((
+              date: _tryParseTableDate(dateStr),
+              label: '${dateStr.isEmpty ? "?" : dateStr}: $cell [${sheet.name}]',
+            ));
+            count++;
             switch (bucket) {
               case AttBucket.present:
                 present++;
@@ -301,38 +298,73 @@ String personTableAttendance(List<DataTableModel> tables, EmployeeModel emp) {
                 break;
             }
           }
-          if (entries.isEmpty) continue;
-          buf.writeln('• ${t.name} › ${sheet.name} (column "${cols[ci]}") — '
-              'present $present, late $late, leave $leave, absent $absent:');
-          for (final e in entries.take(70)) {
-            buf.writeln('   $e');
-          }
-          if (entries.length > 70) {
-            buf.writeln('   ...(${entries.length - 70} more days)');
-          }
+          if (count == 0) continue;
+          summaries.add('${t.name} › ${sheet.name}: present $present, '
+              'late $late, leave $leave, absent $absent ($count days marked)');
         }
       } else {
-        // Non-matrix table: include rows that mention the person.
-        final hits = <String>[];
+        // Non-matrix table: note rows that mention the person.
         for (final row in sheet.rows) {
           final hay = row.join(' ').toLowerCase();
           if (hay.contains(fullL) ||
               (firstL.length > 2 && hay.contains(firstL))) {
-            hits.add(row.where((c) => c.trim().isNotEmpty).join(' | '));
-          }
-        }
-        if (hits.isNotEmpty) {
-          buf.writeln('• ${t.name} › ${sheet.name} — mentioned in '
-              '${hits.length} row(s):');
-          for (final h in hits.take(20)) {
-            buf.writeln('   $h');
+            mentions.add('${t.name}›${sheet.name}: '
+                '${row.where((c) => c.trim().isNotEmpty).join(" | ")}');
           }
         }
       }
     }
   }
-  if (buf.isEmpty) return '';
-  return '\n--- Attendance & mentions from custom Tables ---\n$buf';
+
+  if (summaries.isEmpty && mentions.isEmpty) return '';
+
+  // Most-recent first; undated rows sink to the bottom.
+  dayEntries.sort((a, b) {
+    if (a.date == null && b.date == null) return 0;
+    if (a.date == null) return 1;
+    if (b.date == null) return -1;
+    return b.date!.compareTo(a.date!);
+  });
+
+  final buf = StringBuffer('\n--- Attendance from custom Tables ---\n');
+  for (final s in summaries) {
+    buf.writeln('• $s');
+  }
+  if (dayEntries.isNotEmpty) {
+    buf.writeln('Recent marked days (newest first):');
+    for (final e in dayEntries.take(50)) {
+      buf.writeln('  ${e.label}');
+    }
+    if (dayEntries.length > 50) {
+      buf.writeln('  ...(${dayEntries.length - 50} older days — see totals above)');
+    }
+  }
+  if (mentions.isNotEmpty) {
+    buf.writeln('Other table mentions:');
+    for (final m in mentions.take(12)) {
+      buf.writeln('  $m');
+    }
+  }
+  return buf.toString();
+}
+
+/// Loose date parse for table cells ("01-Jun-2026", "06/01/2026", ISO, …).
+DateTime? _tryParseTableDate(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  for (final f in const [
+    'dd-MMM-yyyy',
+    'd-MMM-yyyy',
+    'dd-MM-yyyy',
+    'MM/dd/yyyy',
+    'dd/MM/yyyy',
+    'yyyy-MM-dd',
+  ]) {
+    try {
+      return DateFormat(f).parseStrict(s);
+    } catch (_) {/* try next */}
+  }
+  return DateTime.tryParse(s);
 }
 
 /// Standing "how to use this app" guide so the AI can answer how-to questions
@@ -452,6 +484,6 @@ Future<String> aiSearchMatches(WidgetRef ref, String question) async {
 
   if (hits.isEmpty) return '';
   hits.sort((a, b) => b.score.compareTo(a.score));
-  final top = hits.take(90).map((e) => e.text).toList();
+  final top = hits.take(55).map((e) => e.text).toList();
   return '=== SEARCH MATCHES for "${question.trim()}" ===\n${top.join("\n")}';
 }
