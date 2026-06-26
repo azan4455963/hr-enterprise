@@ -434,19 +434,15 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         _isAttendance && colIdx >= 0 && _employeeCols.contains(colIdx);
     if (isEmployeeCell &&
         (t.isEmpty || t == '-' || t == '–' || t == '—')) {
+      // Off / holiday cell — kept subtle: a faint grey tint with a small dash,
+      // so the table stays clean and only marked attendance stands out.
       return Container(
         width: double.infinity,
+        height: double.infinity,
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE9EDF2),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: const Text('Off',
-            style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textFaint,
-                fontWeight: FontWeight.w600)),
+        color: const Color(0xFFF3F5F8),
+        child: const Text('–',
+            style: TextStyle(fontSize: 13, color: Color(0xFFB6BECC))),
       );
     }
 
