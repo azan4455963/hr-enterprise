@@ -46,13 +46,21 @@ final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {
   return service.watchEmployees();
 });
 
-/// Employee ids in the current user's scope (a director's department), or null
-/// when there is no scoping (admin sees everything).
+/// Employee ids in the current user's scope, or null when there is no scoping
+/// (admin sees everything). A director is scoped to their department; a plain
+/// employee is scoped to only their own linked record so they never see other
+/// people's leave/attendance.
 final _scopedEmployeeIdsProvider = Provider<Set<String>?>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
-  if (user == null || user.role != RolePermissions.manager) return null;
-  final emps = ref.watch(employeesProvider).valueOrNull ?? const [];
-  return emps.map((e) => e.id).toSet();
+  if (user == null) return null;
+  if (RolePermissions.isSuperAdmin(user.role)) return null; // sees everything
+  if (user.role == RolePermissions.manager) {
+    final emps = ref.watch(employeesProvider).valueOrNull ?? const [];
+    return emps.map((e) => e.id).toSet();
+  }
+  // Plain employee → only their own linked employee id.
+  final eid = user.employeeId;
+  return (eid == null || eid.isEmpty) ? <String>{} : {eid};
 });
 
 final todayAttendanceProvider = StreamProvider<List<AttendanceModel>>((ref) {

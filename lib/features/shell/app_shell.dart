@@ -27,6 +27,7 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   static const _navItems = [
     _NavItem('/dashboard', 'Dashboard', Icons.dashboard_rounded),
+    _NavItem('/me', 'My Space', Icons.badge_rounded),
     _NavItem('/my-department', 'My Department', Icons.groups_2_rounded),
     _NavItem('/departments', 'Departments', Icons.apartment_rounded),
     _NavItem('/users', 'Users & Roles', Icons.manage_accounts_rounded),
@@ -49,7 +50,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   ];
 
   /// Employee-only nav items (what employees can see)
-  static const _employeeOnlyPaths = ['/dashboard', '/attendance', '/leave'];
+  static const _employeeOnlyPaths = ['/me', '/attendance', '/leave'];
 
   @override
   Widget build(BuildContext context) {

@@ -41,7 +41,10 @@ class RbacService {
   }
 
   Map<String, bool> getModuleAccess(UserModel user) => {
-    'dashboard': can(user, 'dashboard_view'),
+    // Plain employees use "My Space"; the admin dashboard is hidden from them.
+    'dashboard':
+        can(user, 'dashboard_view') && user.role != RolePermissions.employee,
+    'me': user.role == RolePermissions.employee,
     'employees': can(user, 'employees_view'),
     'employee-search': can(user, 'employees_view'),
     'departments': can(user, 'departments_manage'),
@@ -49,7 +52,10 @@ class RbacService {
     'activity': RolePermissions.isSuperAdmin(user.role),
     'tables': RolePermissions.isSuperAdmin(user.role),
     'my-department': user.role == RolePermissions.manager,
-    'attendance': can(user, 'attendance_view'),
+    // Attendance lives in admin-only custom tables, so a plain employee can't
+    // render it — hide it for them (their self-service is in My Space).
+    'attendance':
+        can(user, 'attendance_view') && user.role != RolePermissions.employee,
     'leave': can(user, 'leave_view'),
     'payroll': can(user, 'payroll_view'),
     'reports': can(user, 'reports_view'),

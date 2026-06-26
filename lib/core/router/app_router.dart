@@ -28,6 +28,7 @@ import '../../features/google_sheets/screens/google_sheet_viewer_screen.dart';
 import '../../features/google_sheets/screens/google_sheets_admin_screen.dart';
 import '../../features/payroll/screens/payroll_screen.dart';
 import '../../features/reports/screens/reports_screen.dart';
+import '../../features/self_service/screens/my_space_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
 import '../../features/shell/app_shell.dart';
 import '../../features/shell/unauthorized_screen.dart';
@@ -71,6 +72,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/dashboard',
             builder: (context, state) => const DashboardScreen(),
+          ),
+          GoRoute(
+            path: '/me',
+            builder: (context, state) => const MySpaceScreen(),
           ),
           GoRoute(
             path: '/employee-overview',
