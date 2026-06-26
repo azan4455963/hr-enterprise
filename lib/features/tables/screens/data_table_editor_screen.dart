@@ -44,6 +44,9 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
   // whether this looks like an attendance table (has a Date column).
   bool _isAttendance = false;
   Set<int> _employeeCols = {};
+  // Excel-style row selection (click #, Ctrl/Shift) for bulk delete.
+  final Set<int> _selectedRows = {};
+  int? _selectAnchor;
 
   @override
   void initState() {
@@ -78,6 +81,8 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     _active = i;
     _columns = [..._sheets[i].columns];
     _rows = _sheets[i].rows.map((r) => [...r]).toList();
+    _selectedRows.clear();
+    _selectAnchor = null;
     if (_autoMapDays()) _dirty = true;
     _structureKey++;
   }
@@ -242,6 +247,14 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
             icon: Icons.select_all_rounded,
             onPressed: _columns.isEmpty ? () {} : _selectAll,
           ),
+          if (_selectedRows.isNotEmpty)
+            PrimaryButton(
+              label: 'Delete ${_selectedRows.length} row'
+                  '${_selectedRows.length == 1 ? "" : "s"}',
+              icon: Icons.delete_outline_rounded,
+              color: AppColors.error,
+              onPressed: _deleteSelectedRows,
+            ),
           GhostButton(
             label: 'Paste',
             icon: Icons.content_paste_rounded,
@@ -325,30 +338,48 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         title: '#',
         field: 'actions',
         type: PlutoColumnType.text(),
-        width: 64,
+        width: 86,
         frozen: PlutoColumnFrozen.start,
         enableEditingMode: false,
         enableColumnDrag: false,
         enableContextMenu: false,
         enableSorting: false,
         backgroundColor: const Color(0xFFF1F5F9),
-        renderer: (ctx) => Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '${ctx.rowIdx + 1}',
-              style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+        renderer: (ctx) {
+          final selected = _selectedRows.contains(ctx.rowIdx);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _toggleRowSelect(ctx.rowIdx),
+            onSecondaryTapDown: (d) {
+              if (!_selectedRows.contains(ctx.rowIdx)) {
+                _toggleRowSelect(ctx.rowIdx, forceSingle: true);
+              }
+              _rowContextMenu(d.globalPosition);
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.check_box_rounded
+                      : Icons.check_box_outline_blank_rounded,
+                  size: 15,
+                  color: selected ? AppColors.brandBlue : AppColors.textFaint,
+                ),
+                Text(
+                  '${ctx.rowIdx + 1}',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppColors.textMuted),
+                ),
+                InkWell(
+                  onTap: () => _confirmDeleteRow(ctx),
+                  child: const Icon(Icons.close_rounded,
+                      size: 14, color: AppColors.textFaint),
+                ),
+              ],
             ),
-            InkWell(
-              onTap: () => _confirmDeleteRow(ctx),
-              child: const Icon(
-                Icons.close_rounded,
-                size: 14,
-                color: AppColors.textFaint,
-              ),
-            ),
-          ],
-        ),
+          );
+        },
       ),
       for (var i = 0; i < _columns.length; i++)
         PlutoColumn(
@@ -377,7 +408,9 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
         ),
     ];
 
-    return PlutoGrid(
+    return Focus(
+      onKeyEvent: _handleGridKey,
+      child: PlutoGrid(
       key: ValueKey('grid_$_structureKey'),
       columns: columns,
       rows: rows,
@@ -393,6 +426,12 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       onChanged: (e) {
         _onCellChanged(e);
         if (!_dirty) setState(() => _dirty = true);
+      },
+      rowColorCallback: (ctx) {
+        if (_selectedRows.contains(ctx.rowIdx)) {
+          return const Color(0xFFDCE7FF); // selected — light blue
+        }
+        return ctx.rowIdx.isOdd ? const Color(0xFFF8FAFC) : Colors.white;
       },
       configuration: PlutoGridConfiguration(
         columnSize: const PlutoGridColumnSizeConfig(
@@ -422,7 +461,21 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
           gridBorderRadius: BorderRadius.circular(8),
         ),
       ),
+      ),
     );
+  }
+
+  /// Delete key removes the selected rows (when not editing a cell).
+  KeyEventResult _handleGridKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        (event.logicalKey == LogicalKeyboardKey.delete ||
+            event.logicalKey == LogicalKeyboardKey.backspace) &&
+        _selectedRows.isNotEmpty &&
+        !(_sm?.isEditing ?? false)) {
+      _deleteSelectedRows();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   Widget _statusRenderer(PlutoColumnRendererContext ctx) {
@@ -693,7 +746,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     );
     if (confirmed != true) return;
     ctx.stateManager.removeRows([ctx.row]);
-    setState(() => _dirty = true);
+    setState(() {
+      _selectedRows.clear();
+      _selectAnchor = null;
+      _dirty = true;
+    });
     _snack('Row deleted.');
   }
 
@@ -702,6 +759,100 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     final sm = _sm;
     if (sm == null || sm.rows.isEmpty) return;
     sm.setAllCurrentSelecting();
+  }
+
+  // ── Excel-style row selection + bulk delete ─────────────────────────────
+  /// Toggle/extend the row selection (respects Ctrl/Cmd toggle, Shift range).
+  void _toggleRowSelect(int idx, {bool forceSingle = false}) {
+    final ctrl = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    setState(() {
+      if (!forceSingle && shift && _selectAnchor != null) {
+        final a = _selectAnchor!;
+        final lo = a < idx ? a : idx;
+        final hi = a < idx ? idx : a;
+        for (var i = lo; i <= hi; i++) {
+          _selectedRows.add(i);
+        }
+      } else if (!forceSingle && ctrl) {
+        if (!_selectedRows.remove(idx)) _selectedRows.add(idx);
+        _selectAnchor = idx;
+      } else {
+        if (_selectedRows.length == 1 && _selectedRows.contains(idx)) {
+          _selectedRows.clear();
+        } else {
+          _selectedRows
+            ..clear()
+            ..add(idx);
+        }
+        _selectAnchor = idx;
+      }
+    });
+  }
+
+  Future<void> _rowContextMenu(Offset pos) async {
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx, pos.dy),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(children: [
+            const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+            const SizedBox(width: 10),
+            Text('Delete ${_selectedRows.length} row'
+                '${_selectedRows.length == 1 ? "" : "s"}'),
+          ]),
+        ),
+      ],
+    );
+    if (action == 'delete') _deleteSelectedRows();
+  }
+
+  /// Delete all currently-selected rows at once (with confirmation).
+  Future<void> _deleteSelectedRows() async {
+    if (_selectedRows.isEmpty) return;
+    final n = _selectedRows.length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        icon: const Icon(Icons.delete_outline_rounded,
+            color: AppColors.error, size: 32),
+        title: const Text('Delete rows',
+            style: TextStyle(fontWeight: FontWeight.w700)),
+        content: Text('Delete $n selected row${n == 1 ? "" : "s"}? '
+            'This cannot be undone.'),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          OutlinedButton(
+              onPressed: () => Navigator.pop(dialogCtx, false),
+              child: const Text('No')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogCtx, true),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            child: Text('Yes, delete $n'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    _syncFromGrid();
+    setState(() {
+      final keep = <List<String>>[];
+      for (var i = 0; i < _rows.length; i++) {
+        if (!_selectedRows.contains(i)) keep.add(_rows[i]);
+      }
+      _rows = keep;
+      _selectedRows.clear();
+      _selectAnchor = null;
+      _dirty = true;
+      _structureKey++;
+    });
+    _snack('$n row${n == 1 ? "" : "s"} deleted.');
   }
 
   Future<void> _addColumn() async {
