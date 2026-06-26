@@ -10,6 +10,7 @@ class CompanySettingsModel extends Equatable {
     this.workEndHour = 18,
     this.workEndMinute = 0,
     this.biometricEnabled = false,
+    this.leaveAllowances = defaultLeaveAllowances,
     this.updatedAt,
   });
 
@@ -21,7 +22,21 @@ class CompanySettingsModel extends Equatable {
   final int workEndHour;
   final int workEndMinute;
   final bool biometricEnabled;
+
+  /// Annual leave entitlement (days) per leave type, keyed by `LeaveType.name`.
+  /// A type with 0 (or absent) is treated as untracked / unlimited (e.g. unpaid).
+  final Map<String, int> leaveAllowances;
   final DateTime? updatedAt;
+
+  /// Sensible starting policy — the admin can change these in Settings.
+  static const Map<String, int> defaultLeaveAllowances = {
+    'annual': 14,
+    'sick': 8,
+    'casual': 10,
+  };
+
+  /// Entitled days for a leave type by name (0 = untracked).
+  int allowanceForName(String typeName) => leaveAllowances[typeName] ?? 0;
 
   factory CompanySettingsModel.defaults(String companyId) {
     return CompanySettingsModel(
@@ -40,6 +55,7 @@ class CompanySettingsModel extends Equatable {
       workEndHour: map['workEndHour'] as int? ?? 18,
       workEndMinute: map['workEndMinute'] as int? ?? 0,
       biometricEnabled: map['biometricEnabled'] as bool? ?? false,
+      leaveAllowances: _parseAllowances(map['leaveAllowances']),
       updatedAt: _parseDate(map['updatedAt']),
     );
   }
@@ -52,8 +68,19 @@ class CompanySettingsModel extends Equatable {
         'workEndHour': workEndHour,
         'workEndMinute': workEndMinute,
         'biometricEnabled': biometricEnabled,
+        'leaveAllowances': leaveAllowances,
         'updatedAt': updatedAt ?? DateTime.now(),
       };
+
+  static Map<String, int> _parseAllowances(dynamic value) {
+    if (value is Map) {
+      return {
+        for (final e in value.entries)
+          e.key.toString(): (e.value as num?)?.toInt() ?? 0,
+      };
+    }
+    return defaultLeaveAllowances;
+  }
 
   static DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
@@ -62,5 +89,5 @@ class CompanySettingsModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, companyName];
+  List<Object?> get props => [id, companyName, leaveAllowances];
 }

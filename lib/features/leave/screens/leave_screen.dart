@@ -13,7 +13,20 @@ import '../../../models/leave_model.dart';
 import '../../../models/notification_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
+import '../../../providers/leave_balance_providers.dart';
 import '../../../providers/service_providers.dart';
+
+/// Title-cased leave type label, e.g. "Annual".
+String _leaveTypeLabel(LeaveType t) =>
+    t.name.isEmpty ? t.name : '${t.name[0].toUpperCase()}${t.name.substring(1)}';
+
+/// Find one type's balance in a list, or null if that type isn't tracked.
+LeaveBalance? _balanceForType(List<LeaveBalance> balances, LeaveType type) {
+  for (final b in balances) {
+    if (b.type == type) return b;
+  }
+  return null;
+}
 
 class LeaveScreen extends ConsumerWidget {
   const LeaveScreen({super.key});
@@ -87,9 +100,42 @@ class LeaveScreen extends ConsumerWidget {
                     initialValue: leaveType,
                     decoration: const InputDecoration(labelText: 'Leave Type'),
                     items: LeaveType.values
-                        .map((t) => DropdownMenuItem(value: t, child: Text(t.name)))
+                        .map((t) => DropdownMenuItem(
+                            value: t, child: Text(_leaveTypeLabel(t))))
                         .toList(),
                     onChanged: (v) => setDialogState(() => leaveType = v!),
+                  ),
+                  // Live entitlement for the picked type (self-request).
+                  Consumer(
+                    builder: (context, r, _) {
+                      final empId =
+                          r.read(currentUserProvider).valueOrNull?.employeeId;
+                      if (empId == null) return const SizedBox.shrink();
+                      final bal = _balanceForType(
+                          r.watch(employeeLeaveBalancesProvider(empId)),
+                          leaveType);
+                      if (bal == null) return const SizedBox.shrink();
+                      final reqDays = end.difference(start).inDays + 1;
+                      final exceeds = reqDays > bal.remaining;
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            '${_leaveTypeLabel(leaveType)}: '
+                            '${bal.remaining} of ${bal.allowance} days left'
+                            '${exceeds ? ' • this request exceeds it by ${reqDays - bal.remaining}' : ''}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: (exceeds || bal.overLimit)
+                                  ? AppColors.error
+                                  : AppColors.textMuted,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   ListTile(
                     title: Text('Start: ${fmt.format(start)}'),
@@ -145,11 +191,40 @@ class LeaveScreen extends ConsumerWidget {
                   );
                   return;
                 }
+                // Warn (but don't block) if it exceeds the leave balance.
+                final reqDays = end.difference(start).inDays + 1;
+                final bal = _balanceForType(
+                    ref.read(employeeLeaveBalancesProvider(user!.employeeId!)),
+                    leaveType);
+                if (bal != null && reqDays > bal.remaining) {
+                  final proceed = await showDialog<bool>(
+                    context: ctx,
+                    builder: (c) => AlertDialog(
+                      title: const Text('Exceeds leave balance'),
+                      content: Text(
+                        '${_leaveTypeLabel(leaveType)} balance is '
+                        '${bal.remaining} day(s) left, but this request is '
+                        '$reqDays day(s). Submit anyway?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(c, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(c, true),
+                          child: const Text('Submit anyway'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (proceed != true) return;
+                }
                 try {
                   await ref.read(leaveServiceProvider).createRequest(
                         LeaveRequestModel(
                           id: '',
-                          employeeId: user!.employeeId!,
+                          employeeId: user.employeeId!,
                           employeeName: user.displayName ?? user.email,
                           startDate: start,
                           endDate: end,
@@ -199,13 +274,43 @@ class _LeaveTile extends ConsumerWidget {
         statusColor = AppColors.warning;
     }
 
+    final bal = _balanceForType(
+      ref.watch(employeeLeaveBalancesProvider(leave.employeeId)),
+      leave.leaveType,
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GlassCard(
         child: ListTile(
           title: Text(leave.employeeName),
-          subtitle: Text(
-            '${leave.leaveType.name} • ${fmt.format(leave.startDate)} → ${fmt.format(leave.endDate)} (${leave.days}d)\n${leave.reason ?? ''}',
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${_leaveTypeLabel(leave.leaveType)} • '
+                '${fmt.format(leave.startDate)} → ${fmt.format(leave.endDate)} '
+                '(${leave.days}d)',
+              ),
+              if ((leave.reason ?? '').isNotEmpty) Text(leave.reason!),
+              if (bal != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    bal.overLimit
+                        ? '${_leaveTypeLabel(leave.leaveType)} balance: over by '
+                            '${bal.used - bal.allowance} (of ${bal.allowance})'
+                        : '${_leaveTypeLabel(leave.leaveType)} balance: '
+                            '${bal.remaining} of ${bal.allowance} left',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: bal.overLimit ? AppColors.error : AppColors.success,
+                    ),
+                  ),
+                ),
+            ],
           ),
           isThreeLine: true,
           trailing: leave.status == LeaveStatus.pending

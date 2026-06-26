@@ -18,6 +18,9 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _companyName = TextEditingController();
+  final _annualAllow = TextEditingController();
+  final _sickAllow = TextEditingController();
+  final _casualAllow = TextEditingController();
   int _startHour = 9;
   int _startMin = 0;
   int _lateMin = 15;
@@ -28,11 +31,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _companyName.dispose();
+    _annualAllow.dispose();
+    _sickAllow.dispose();
+    _casualAllow.dispose();
     super.dispose();
   }
 
   void _load(CompanySettingsModel s) {
     _companyName.text = s.companyName;
+    _annualAllow.text = (s.allowanceForName('annual')).toString();
+    _sickAllow.text = (s.allowanceForName('sick')).toString();
+    _casualAllow.text = (s.allowanceForName('casual')).toString();
     _startHour = s.workStartHour;
     _startMin = s.workStartMinute;
     _lateMin = s.lateAfterMinutes;
@@ -44,6 +53,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _saving = true);
     try {
       final current = await ref.read(companySettingsProvider.future);
+      int allow(TextEditingController c, String key) =>
+          int.tryParse(c.text.trim()) ?? current.allowanceForName(key);
       await ref.read(companySettingsServiceProvider).updateSettings(
             CompanySettingsModel(
               id: current.id,
@@ -54,6 +65,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               workEndHour: _endHour,
               workEndMinute: _endMin,
               biometricEnabled: current.biometricEnabled,
+              leaveAllowances: {
+                'annual': allow(_annualAllow, 'annual'),
+                'sick': allow(_sickAllow, 'sick'),
+                'casual': allow(_casualAllow, 'casual'),
+              },
             ),
           );
       if (mounted) {
@@ -78,6 +94,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (enable) {
         final supported = await bio.isDeviceSupported();
         if (!supported) throw AppException('Biometric not available on this device');
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Sign in once with email/password, then enable biometric in Settings after login.'),
@@ -142,6 +159,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
     }
+  }
+
+  Widget _allowanceField(String label, TextEditingController c) {
+    return TextField(
+      controller: c,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
+    );
   }
 
   @override
@@ -242,7 +271,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           label: '$_endHour',
                           onChanged: (v) => setState(() => _endHour = v.round()),
                         ),
+                        const Divider(height: 28),
+                        Text(
+                          'Leave Allowances (days per year)',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Each employee\'s remaining balance is this minus the '
+                          'leave they\'ve taken this year. Set 0 to not track a type.',
+                          style: TextStyle(fontSize: 12.5),
+                        ),
                         const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _allowanceField('Annual', _annualAllow)),
+                            const SizedBox(width: 10),
+                            Expanded(child: _allowanceField('Sick', _sickAllow)),
+                            const SizedBox(width: 10),
+                            Expanded(child: _allowanceField('Casual', _casualAllow)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: _saving ? null : _saveSettings,
                           child: _saving
