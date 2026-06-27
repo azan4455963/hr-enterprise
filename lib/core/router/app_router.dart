@@ -9,6 +9,7 @@ import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
 import '../../features/admin/screens/activity_log_screen.dart';
+import '../../features/assets/screens/assets_screen.dart';
 import '../../features/admin/screens/users_roles_screen.dart';
 import '../../features/dashboard/screens/dashboard_screen.dart';
 import '../../features/departments/screens/departments_screen.dart';
@@ -178,6 +179,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/reminders',
             builder: (context, state) => const RemindersScreen(),
+          ),
+          GoRoute(
+            path: '/assets',
+            builder: (context, state) => const AssetsScreen(),
           ),
           GoRoute(
             path: '/onboarding',

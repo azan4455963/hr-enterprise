@@ -194,5 +194,9 @@ service cloud.firestore {
     match /data_tables/{id} {
       allow read, write: if isAdminRole();
     }
+
+    match /assets/{id} {
+      allow read, write: if isAdminRole();
+    }
   }
 }

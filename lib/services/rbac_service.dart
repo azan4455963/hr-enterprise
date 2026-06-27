@@ -52,6 +52,7 @@ class RbacService {
     'users': RolePermissions.isSuperAdmin(user.role),
     'activity': RolePermissions.isSuperAdmin(user.role),
     'tables': RolePermissions.isSuperAdmin(user.role),
+    'assets': RolePermissions.isSuperAdmin(user.role),
     'my-department': user.role == RolePermissions.manager,
     // Attendance lives in admin-only custom tables, so a plain employee can't
     // render it — hide it for them (their self-service is in My Space).
