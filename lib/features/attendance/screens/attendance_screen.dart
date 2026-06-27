@@ -6,6 +6,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
+import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
 import '../../../models/leave_model.dart';
@@ -494,7 +495,7 @@ class _AttendanceLog extends ConsumerWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (e, _) => ErrorState(error: e),
     );
   }
 
@@ -658,7 +659,7 @@ class _LeaveList extends StatelessWidget {
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (e, _) => ErrorState(error: e),
     );
   }
 

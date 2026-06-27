@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/error_state.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/service_providers.dart';
@@ -47,7 +48,7 @@ class EmployeeReportScreen extends ConsumerWidget {
       ),
       body: empAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => ErrorState(error: e),
         data: (emp) {
           if (emp == null) {
             return const Center(child: Text('Employee not found'));

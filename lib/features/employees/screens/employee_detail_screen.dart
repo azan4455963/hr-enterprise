@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
+import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
@@ -45,7 +46,7 @@ class EmployeeDetailScreen extends ConsumerWidget {
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('$e')),
+        body: ErrorState(error: e),
       ),
       data: (emp) {
         if (emp == null) {
@@ -1267,11 +1268,11 @@ class _DocumentsTab extends ConsumerWidget {
   }
 
   Future<void> _upload(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
     final result = await FilePicker.platform.pickFiles(withData: true);
     if (result == null) return;
     final user = ref.read(currentUserProvider).valueOrNull;
     final svc = ref.read(employeeDocumentServiceProvider);
-    final messenger = ScaffoldMessenger.of(context);
     for (final f in result.files) {
       final bytes = f.bytes;
       if (bytes == null) continue;

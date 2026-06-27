@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/google_sheet_model.dart';
 import '../../../models/payroll_model.dart';
@@ -719,7 +720,7 @@ class _PayrollSummaryCard extends StatelessWidget {
         },
         loading: () =>
             const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        error: (e, _) => Text('$e'),
+        error: (e, _) => ErrorState(error: e, compact: true),
       ),
     );
   }
@@ -848,7 +849,7 @@ class _ActivityCard extends StatelessWidget {
             loading: () => const Center(
                 child:
                     Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(strokeWidth: 2))),
-            error: (e, _) => Text('$e'),
+            error: (e, _) => ErrorState(error: e, compact: true),
           ),
         ],
       ),
@@ -957,7 +958,7 @@ class _DepartmentCard extends StatelessWidget {
                 child: Padding(
                     padding: EdgeInsets.all(20),
                     child: CircularProgressIndicator(strokeWidth: 2))),
-            error: (e, _) => Text('$e'),
+            error: (e, _) => ErrorState(error: e, compact: true),
           ),
         ],
       ),

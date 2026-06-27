@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/utils/app_exception.dart';
+import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../models/company_settings_model.dart';
 import '../../../providers/auth_provider.dart';
@@ -310,7 +311,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => ErrorState(error: e),
       ),
     );
   }
