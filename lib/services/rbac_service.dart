@@ -60,6 +60,7 @@ class RbacService {
     'leave': can(user, 'leave_view'),
     'payroll': can(user, 'payroll_view'),
     'reports': can(user, 'reports_view'),
+    'reminders': can(user, 'employees_view'),
     'onboarding': can(user, 'onboarding_view'),
     'notifications': can(user, 'notifications_view'),
     'settings': can(user, 'settings_view'),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/validators.dart';
@@ -36,6 +37,11 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
   bool _loading = false;
   Uint8List? _photoBytes;
   String? _existingPhotoUrl;
+  // Preserved across edits so saving never wipes the joining date.
+  DateTime? _joiningDate;
+  DateTime? _dob;
+  DateTime? _cnicExpiry;
+  DateTime? _contractEnd;
 
   @override
   void initState() {
@@ -84,6 +90,10 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
       _department.text = emp.departmentName ?? '';
       _salary.text = emp.salary?.toString() ?? '';
       _existingPhotoUrl = emp.profilePictureUrl;
+      _joiningDate = emp.joiningDate;
+      _dob = emp.dateOfBirth;
+      _cnicExpiry = emp.cnicExpiry;
+      _contractEnd = emp.contractEndDate;
       setState(() {});
     }
   }
@@ -104,81 +114,50 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     if (user == null) return;
 
     try {
-      var employee = EmployeeModel(
-        id: widget.employeeId ?? '',
-        firstName: _firstName.text.trim(),
-        lastName: _lastName.text.trim(),
-        email: _email.text.trim(),
-        phone: _phone.text.trim(),
-        fatherName: _fatherName.text.trim(),
-        cnic: _cnic.text.trim(),
-        address: _address.text.trim(),
-        position: _position.text.trim(),
-        departmentName: _department.text.trim(),
-        salary: double.tryParse(_salary.text),
-        profilePictureUrl: _existingPhotoUrl,
-        joiningDate: DateTime.now(),
-      );
+      // Single source of truth for the model — keeps every field (incl. the
+      // joining date and reminder dates) on both create and edit.
+      EmployeeModel build(String id, String? photoUrl) => EmployeeModel(
+            id: id,
+            firstName: _firstName.text.trim(),
+            lastName: _lastName.text.trim(),
+            email: _email.text.trim(),
+            phone: _phone.text.trim(),
+            fatherName: _fatherName.text.trim(),
+            cnic: _cnic.text.trim(),
+            address: _address.text.trim(),
+            position: _position.text.trim(),
+            departmentName: _department.text.trim(),
+            salary: double.tryParse(_salary.text),
+            profilePictureUrl: photoUrl,
+            joiningDate: _joiningDate ?? DateTime.now(),
+            dateOfBirth: _dob,
+            cnicExpiry: _cnicExpiry,
+            contractEndDate: _contractEnd,
+          );
+
+      final storage = ref.read(storageServiceProvider);
+      final service = ref.read(employeeServiceProvider);
 
       if (widget.employeeId != null) {
+        var photoUrl = _existingPhotoUrl;
         if (_photoBytes != null) {
-          final url = await ref.read(storageServiceProvider).uploadProfilePhoto(
-                widget.employeeId!,
-                _photoBytes!,
-              );
-          employee = EmployeeModel(
-            id: widget.employeeId!,
-            firstName: employee.firstName,
-            lastName: employee.lastName,
-            email: employee.email,
-            phone: employee.phone,
-            fatherName: employee.fatherName,
-            cnic: employee.cnic,
-            address: employee.address,
-            position: employee.position,
-            departmentName: employee.departmentName,
-            salary: employee.salary,
-            profilePictureUrl: url,
-            joiningDate: employee.joiningDate,
-          );
+          photoUrl =
+              await storage.uploadProfilePhoto(widget.employeeId!, _photoBytes!);
         }
-        await ref.read(employeeServiceProvider).updateEmployee(
-              employee,
-              userId: user.id,
-            );
+        await service.updateEmployee(build(widget.employeeId!, photoUrl),
+            userId: user.id);
       } else {
-        final id = await ref.read(employeeServiceProvider).createEmployee(
-              employee,
-              userId: user.id,
-            );
+        final id =
+            await service.createEmployee(build('', _existingPhotoUrl),
+                userId: user.id);
         if (_photoBytes != null) {
-          final url = await ref.read(storageServiceProvider).uploadProfilePhoto(
-                id,
-                _photoBytes!,
-              );
-          await ref.read(employeeServiceProvider).updateEmployee(
-                EmployeeModel(
-                  id: id,
-                  firstName: employee.firstName,
-                  lastName: employee.lastName,
-                  email: employee.email,
-                  phone: employee.phone,
-                  fatherName: employee.fatherName,
-                  cnic: employee.cnic,
-                  address: employee.address,
-                  position: employee.position,
-                  departmentName: employee.departmentName,
-                  salary: employee.salary,
-                  profilePictureUrl: url,
-                  joiningDate: employee.joiningDate,
-                ),
-                userId: user.id,
-              );
+          final url = await storage.uploadProfilePhoto(id, _photoBytes!);
+          await service.updateEmployee(build(id, url), userId: user.id);
         }
-        await ref.read(employeeServiceProvider).linkEmployeeToUser(
-              employeeId: id,
-              email: employee.email,
-            );
+        await service.linkEmployeeToUser(
+          employeeId: id,
+          email: _email.text.trim(),
+        );
       }
       if (mounted) context.pop();
     } catch (e) {
@@ -190,6 +169,43 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Widget _dateField(
+      String label, DateTime? value, void Function(DateTime?) onPick) {
+    final fmt = DateFormat('dd MMM yyyy');
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: InkWell(
+        onTap: () async {
+          final now = DateTime.now();
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: value ?? DateTime(now.year - 20, now.month, now.day),
+            firstDate: DateTime(1950),
+            lastDate: DateTime(now.year + 15),
+          );
+          if (picked != null) onPick(picked);
+        },
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            suffixIcon: value != null
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    onPressed: () => onPick(null),
+                  )
+                : const Icon(Icons.calendar_today, size: 18),
+          ),
+          child: Text(
+            value != null ? fmt.format(value) : 'Not set',
+            style: value != null
+                ? null
+                : TextStyle(color: Theme.of(context).hintColor),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -271,6 +287,10 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                     decoration: const InputDecoration(labelText: 'CNIC'),
                     validator: Validators.cnic,
                   ),
+                  _dateField('Date of Birth', _dob,
+                      (d) => setState(() => _dob = d)),
+                  _dateField('CNIC Expiry', _cnicExpiry,
+                      (d) => setState(() => _cnicExpiry = d)),
                   TextFormField(
                     controller: _address,
                     decoration: const InputDecoration(labelText: 'Address'),
@@ -316,6 +336,8 @@ class _EmployeeFormScreenState extends ConsumerState<EmployeeFormScreen> {
                       keyboardType: TextInputType.number,
                       validator: Validators.positiveNumber,
                     ),
+                  _dateField('Contract End Date', _contractEnd,
+                      (d) => setState(() => _contractEnd = d)),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: _loading ? null : _save,

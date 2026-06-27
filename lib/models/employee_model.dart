@@ -16,6 +16,9 @@ class EmployeeModel extends Equatable {
     this.salary,
     this.joiningDate,
     this.leavingDate,
+    this.dateOfBirth,
+    this.cnicExpiry,
+    this.contractEndDate,
     this.profilePictureUrl,
     this.documentUrls = const [],
     this.status = EmployeeStatus.active,
@@ -39,6 +42,11 @@ class EmployeeModel extends Equatable {
   final double? salary;
   final DateTime? joiningDate;
   final DateTime? leavingDate;
+
+  /// Optional reminder dates (used by the Reminders module).
+  final DateTime? dateOfBirth;
+  final DateTime? cnicExpiry;
+  final DateTime? contractEndDate;
   final String? profilePictureUrl;
   final List<String> documentUrls;
   final EmployeeStatus status;
@@ -65,6 +73,9 @@ class EmployeeModel extends Equatable {
       salary: (map['salary'] as num?)?.toDouble(),
       joiningDate: _parseDate(map['joiningDate']),
       leavingDate: _parseDate(map['leavingDate']),
+      dateOfBirth: _parseDate(map['dateOfBirth']),
+      cnicExpiry: _parseDate(map['cnicExpiry']),
+      contractEndDate: _parseDate(map['contractEndDate']),
       profilePictureUrl: map['profilePictureUrl'] as String?,
       documentUrls: List<String>.from(map['documentUrls'] as List? ?? []),
       status: EmployeeStatus.values.firstWhere(
@@ -92,6 +103,9 @@ class EmployeeModel extends Equatable {
       'position': position,
       'joiningDate': joiningDate,
       'leavingDate': leavingDate,
+      'dateOfBirth': dateOfBirth,
+      'cnicExpiry': cnicExpiry,
+      'contractEndDate': contractEndDate,
       'profilePictureUrl': profilePictureUrl,
       'documentUrls': documentUrls,
       'status': status.name,

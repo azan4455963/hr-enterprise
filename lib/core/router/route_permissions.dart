@@ -15,6 +15,7 @@ class RoutePermissions {
     '/leave': 'leave_view',
     '/payroll': 'payroll_view',
     '/reports': 'reports_view',
+    '/reminders': 'employees_view',
     '/onboarding': 'onboarding_view',
     '/notifications': 'notifications_view',
     '/settings': 'settings_view',

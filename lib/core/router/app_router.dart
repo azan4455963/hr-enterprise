@@ -28,6 +28,7 @@ import '../../features/drive/screens/google_drive_admin_screen.dart';
 import '../../features/google_sheets/screens/google_sheet_viewer_screen.dart';
 import '../../features/google_sheets/screens/google_sheets_admin_screen.dart';
 import '../../features/payroll/screens/payroll_screen.dart';
+import '../../features/reminders/screens/reminders_screen.dart';
 import '../../features/reports/screens/reports_screen.dart';
 import '../../features/self_service/screens/my_space_screen.dart';
 import '../../features/settings/screens/settings_screen.dart';
@@ -173,6 +174,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/reports',
             builder: (context, state) => const ReportsScreen(),
+          ),
+          GoRoute(
+            path: '/reminders',
+            builder: (context, state) => const RemindersScreen(),
           ),
           GoRoute(
             path: '/onboarding',
