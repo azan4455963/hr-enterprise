@@ -253,6 +253,11 @@ class ExportService {
     String? email,
     required List<LeaveRequestModel> leaves,
     required List<PayrollModel> payroll,
+    int attPresent = 0,
+    int attLate = 0,
+    int attLeave = 0,
+    int attAbsent = 0,
+    List<({String date, String status})> attendance = const [],
   }) async {
     final doc = pw.Document();
     final totalLeaveDays = leaves
@@ -299,6 +304,28 @@ class ExportService {
             kv('Department', department),
           if (email != null && email.isNotEmpty) kv('Email', email),
           pw.SizedBox(height: 16),
+
+          if (attPresent + attLate + attLeave + attAbsent > 0 ||
+              attendance.isNotEmpty) ...[
+            pw.Text('Attendance',
+                style:
+                    pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold)),
+            pw.Divider(),
+            kv('Present', '$attPresent'),
+            kv('Late', '$attLate'),
+            kv('Leave', '$attLeave'),
+            kv('Absent', '$attAbsent'),
+            pw.SizedBox(height: 8),
+            if (attendance.isNotEmpty)
+              pw.TableHelper.fromTextArray(
+                headers: ['Date', 'Status'],
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                headerStyle:
+                    pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+                data: attendance.map((a) => [a.date, a.status]).toList(),
+              ),
+            pw.SizedBox(height: 16),
+          ],
 
           pw.Text('Leave Summary',
               style:

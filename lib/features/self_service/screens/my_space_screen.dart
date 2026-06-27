@@ -7,6 +7,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../../../models/employee_record_model.dart';
 import '../../../models/leave_model.dart';
 import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
@@ -72,9 +73,11 @@ class MySpaceScreen extends ConsumerWidget {
               child: OutlinedButton.icon(
                 onPressed: () => _downloadReport(context, ref, user),
                 icon: const Icon(Icons.download_rounded, size: 18),
-                label: const Text('Download My Report (PDF)'),
+                label: const Text('Download My Record (PDF)'),
               ),
             ),
+            const SizedBox(height: 16),
+            _MyAttendanceSection(employeeId: empId),
             const SizedBox(height: 16),
             _LeaveBalanceSection(employeeId: empId),
             const SizedBox(height: 16),
@@ -115,6 +118,8 @@ class MySpaceScreen extends ConsumerWidget {
       final leaves =
           await ref.read(employeeLeaveHistoryProvider(empId).future);
       final payroll = await ref.read(myPayrollProvider(empId).future);
+      final att = _parseAttendanceRecord(
+          await ref.read(myAttendanceSummaryProvider(empId).future));
       final company =
           ref.read(companySettingsProvider).valueOrNull?.companyName ??
               'Company';
@@ -127,6 +132,11 @@ class MySpaceScreen extends ConsumerWidget {
             email: user.email,
             leaves: leaves,
             payroll: payroll,
+            attPresent: att?.present ?? 0,
+            attLate: att?.late ?? 0,
+            attLeave: att?.leave ?? 0,
+            attAbsent: att?.absent ?? 0,
+            attendance: att?.dates ?? const [],
           );
     } catch (e) {
       messenger.showSnackBar(
@@ -358,6 +368,166 @@ class _SalarySection extends ConsumerWidget {
                   ),
                 ),
               ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+typedef _AttParsed = ({
+  int present,
+  int late,
+  int leave,
+  int absent,
+  List<({String date, String status})> dates
+});
+
+/// Pull totals (from the record's fields) and dated lines (from its note) out
+/// of a published attendance-summary record.
+_AttParsed? _parseAttendanceRecord(EmployeeRecordModel? rec) {
+  if (rec == null) return null;
+  int val(String label) {
+    for (final f in rec.fields) {
+      if (f.label.toLowerCase() == label.toLowerCase()) {
+        return int.tryParse(f.value) ?? 0;
+      }
+    }
+    return 0;
+  }
+
+  final dates = <({String date, String status})>[];
+  for (final line in (rec.note ?? '').split('\n')) {
+    final t = line.trim();
+    if (t.isEmpty) continue;
+    final idx = t.indexOf(': ');
+    if (idx > 0) {
+      dates.add((date: t.substring(0, idx), status: t.substring(idx + 2)));
+    } else {
+      dates.add((date: t, status: ''));
+    }
+  }
+  return (
+    present: val('Present'),
+    late: val('Late'),
+    leave: val('Leave'),
+    absent: val('Absent'),
+    dates: dates,
+  );
+}
+
+Widget _attStat(String label, int value, Color color) => Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.09),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$value',
+                style: TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 20, color: color)),
+            Text(label,
+                style:
+                    const TextStyle(fontSize: 11, color: AppColors.textMuted)),
+          ],
+        ),
+      ),
+    );
+
+class _MyAttendanceSection extends ConsumerWidget {
+  const _MyAttendanceSection({required this.employeeId});
+  final String employeeId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(myAttendanceSummaryProvider(employeeId));
+    final title = Text(
+      'My attendance',
+      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: AppColors.heading,
+          ),
+    );
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (rec) {
+        final p = _parseAttendanceRecord(rec);
+        if (p == null) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              title,
+              const SizedBox(height: 8),
+              const AppCard(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16, horizontal: 6),
+                  child: Text(
+                    "Your attendance hasn't been published yet — ask your "
+                    'admin to publish it.',
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            title,
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _attStat('Present', p.present, AppColors.success),
+                const SizedBox(width: 10),
+                _attStat('Late', p.late, AppColors.warning),
+                const SizedBox(width: 10),
+                _attStat('Leave', p.leave, AppColors.brandBlue),
+                const SizedBox(width: 10),
+                _attStat('Absent', p.absent, AppColors.error),
+              ],
+            ),
+            if (p.dates.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              AppCard(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Column(
+                  children: [
+                    for (final d in p.dates.take(60))
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(d.date,
+                                  style: const TextStyle(
+                                      fontSize: 12.5,
+                                      color: AppColors.textBody)),
+                            ),
+                            Text(d.status,
+                                style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textMuted)),
+                          ],
+                        ),
+                      ),
+                    if (p.dates.length > 60)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text('+ ${p.dates.length - 60} more',
+                            style: const TextStyle(
+                                fontSize: 11.5, color: AppColors.textFaint)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ],
         );
       },

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import '../models/employee_record_model.dart';
 import 'audit_service.dart';
@@ -48,6 +49,48 @@ class EmployeeRecordService {
       targetId: '$employeeId/${record.id}',
       details: {'title': record.title},
     );
+  }
+
+  /// Fixed doc id for the published attendance snapshot (one per employee).
+  static const attendanceSummaryId = 'attendance_summary';
+
+  /// Publish (upsert) one employee's attendance snapshot so the linked employee
+  /// can read it on their My Space. Marked visibleToEmployee so the existing
+  /// security rule allows the employee to read just this record.
+  Future<void> publishAttendanceSummary({
+    required String employeeId,
+    required int present,
+    required int late,
+    required int leave,
+    required int absent,
+    required String datesText,
+    required String userId,
+  }) async {
+    await _ref(employeeId).doc(attendanceSummaryId).set({
+      'title': 'Attendance Summary',
+      'category': 'attendance',
+      'visibleToEmployee': true,
+      'fields': [
+        {'label': 'Present', 'value': '$present'},
+        {'label': 'Late', 'value': '$late'},
+        {'label': 'Leave', 'value': '$leave'},
+        {'label': 'Absent', 'value': '$absent'},
+        {
+          'label': 'Updated',
+          'value': DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now()),
+        },
+      ],
+      'note': datesText,
+      'createdBy': userId,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Read one employee's published attendance snapshot (admin or the linked
+  /// employee themselves).
+  Stream<EmployeeRecordModel?> watchAttendanceSummary(String employeeId) {
+    return _ref(employeeId).doc(attendanceSummaryId).snapshots().map(
+        (d) => d.exists ? EmployeeRecordModel.fromMap(d.data()!, d.id) : null);
   }
 
   Future<void> delete(String employeeId, String recordId,

@@ -111,6 +111,16 @@ final employeeRecordsProvider =
   return ref.watch(employeeRecordServiceProvider).watch(employeeId);
 });
 
+/// One employee's published attendance snapshot (readable by the employee on
+/// My Space, since it's marked visibleToEmployee). Null until an admin
+/// publishes it.
+final myAttendanceSummaryProvider =
+    StreamProvider.family<EmployeeRecordModel?, String>((ref, employeeId) {
+  return ref
+      .watch(employeeRecordServiceProvider)
+      .watchAttendanceSummary(employeeId);
+});
+
 /// Files (CNIC, contract, certificates…) attached to one employee.
 final employeeDocumentsProvider =
     StreamProvider.family<List<EmployeeDocumentModel>, String>((ref, employeeId) {

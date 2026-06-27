@@ -9,6 +9,7 @@ import '../../../core/widgets/ui_kit.dart';
 import '../../../models/employee_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
+import '../../../providers/data_table_providers.dart';
 import '../../../providers/leave_balance_providers.dart';
 import '../../../providers/service_providers.dart';
 import '../../../providers/table_attendance_providers.dart';
@@ -27,6 +28,7 @@ class EmployeeRecordScreen extends ConsumerStatefulWidget {
 class _EmployeeRecordScreenState extends ConsumerState<EmployeeRecordScreen> {
   String? _selectedId;
   bool _exporting = false;
+  bool _publishing = false;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +57,36 @@ class _EmployeeRecordScreenState extends ConsumerState<EmployeeRecordScreen> {
                 "One place for a person's attendance, salary and leave — pulled "
                 'live from across the app.',
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          AppCard(
+            child: Row(
+              children: [
+                const Icon(Icons.cloud_upload_outlined,
+                    color: AppColors.brandBlue),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Publish each employee\'s attendance to their own My Space '
+                    '(so they can see their totals + dates and download it). '
+                    'Re-publish whenever you update attendance.',
+                    style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _publishing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : PrimaryButton(
+                        label: 'Publish to employees',
+                        icon: Icons.send_rounded,
+                        onPressed: _publishAll,
+                      ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           AppCard(
             child: Row(
               children: [
@@ -114,6 +145,44 @@ class _EmployeeRecordScreenState extends ConsumerState<EmployeeRecordScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _publishAll() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    final tables = ref.read(dataTablesProvider).valueOrNull ?? const [];
+    final employees = ref.read(employeesProvider).valueOrNull ?? const [];
+    setState(() => _publishing = true);
+    try {
+      final svc = ref.read(employeeRecordServiceProvider);
+      var count = 0;
+      for (final emp in employees) {
+        final att = computeEmployeeTableAttendance(tables, emp.fullName);
+        if (att.entries.isEmpty) continue; // name not matched in any table
+        final datesText = att.entries
+            .take(220)
+            .map((e) => '${e.dateStr}: ${e.status}')
+            .join('\n');
+        await svc.publishAttendanceSummary(
+          employeeId: emp.id,
+          present: att.present,
+          late: att.late,
+          leave: att.leave,
+          absent: att.absent,
+          datesText: datesText,
+          userId: user.id,
+        );
+        count++;
+      }
+      messenger.showSnackBar(SnackBar(
+          content: Text('Published attendance for $count employee(s). '
+              'They can now see it in My Space.')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Publish failed: $e')));
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
   }
 
   Future<void> _exportExcel(EmployeeModel emp, bool canViewSalary) async {
