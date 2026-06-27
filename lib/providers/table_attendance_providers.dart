@@ -234,3 +234,120 @@ final tableAttendanceLogProvider = Provider<List<AttendanceLogEntry>>((ref) {
   final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
   return computeTodayLog(tables, DateTime.now());
 });
+
+/// One dated attendance mark for a person, pulled from a custom table.
+class EmpAttEntry {
+  const EmpAttEntry({
+    required this.date,
+    required this.dateStr,
+    required this.status,
+    required this.source,
+  });
+  final DateTime? date;
+  final String dateStr;
+  final String status; // raw cell text
+  final String source; // "Table › Sheet"
+}
+
+/// One employee's whole attendance, aggregated out of every custom table.
+class EmpTableAttendance {
+  const EmpTableAttendance({
+    required this.present,
+    required this.late,
+    required this.leave,
+    required this.absent,
+    required this.entries,
+  });
+  final int present; // includes late
+  final int late;
+  final int leave;
+  final int absent;
+  final List<EmpAttEntry> entries; // newest first
+}
+
+/// Match a table column header to a person's name (full, or first name).
+bool _headerIsPerson(String header, String fullL, String firstL) {
+  final h = header.trim().toLowerCase();
+  if (h.isEmpty || h == 'date' || h == 'day' || h == 'working days') {
+    return false;
+  }
+  if (h == fullL) return true;
+  if (firstL.length > 2 && h.contains(firstL)) return true;
+  if (h.length > 2 && fullL.contains(h)) return true;
+  return false;
+}
+
+/// Aggregate one employee's attendance from all tables (matrix layout: a Date
+/// column + a column per employee). Matches the person's column(s) by name.
+EmpTableAttendance computeEmployeeTableAttendance(
+    List<DataTableModel> tables, String employeeName) {
+  final fullL = employeeName.toLowerCase().trim();
+  final firstL = fullL.split(' ').first;
+  var present = 0, late = 0, leave = 0, absent = 0;
+  final entries = <EmpAttEntry>[];
+
+  for (final t in tables) {
+    for (final sheet in t.sheets) {
+      final cols = sheet.columns;
+      final dateIdx = _col(cols, 'date');
+      final personCols = <int>[
+        for (var i = 0; i < cols.length; i++)
+          if (_headerIsPerson(cols[i], fullL, firstL)) i,
+      ];
+      if (personCols.isEmpty) continue;
+      for (final ci in personCols) {
+        for (final row in sheet.rows) {
+          final cell = ci < row.length ? row[ci].trim() : '';
+          if (cell.isEmpty) continue;
+          final bucket = classifyStatus(cell);
+          if (bucket == AttBucket.blank || bucket == AttBucket.off) continue;
+          final dateStr =
+              (dateIdx >= 0 && dateIdx < row.length) ? row[dateIdx].trim() : '';
+          entries.add(EmpAttEntry(
+            date: _parseDate(dateStr),
+            dateStr: dateStr.isEmpty ? '?' : dateStr,
+            status: cell,
+            source: '${t.name} › ${sheet.name}',
+          ));
+          switch (bucket) {
+            case AttBucket.present:
+              present++;
+              break;
+            case AttBucket.late:
+              late++;
+              present++;
+              break;
+            case AttBucket.leave:
+              leave++;
+              break;
+            case AttBucket.absent:
+              absent++;
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+  }
+  entries.sort((a, b) {
+    if (a.date == null && b.date == null) return 0;
+    if (a.date == null) return 1;
+    if (b.date == null) return -1;
+    return b.date!.compareTo(a.date!);
+  });
+  return EmpTableAttendance(
+    present: present,
+    late: late,
+    leave: leave,
+    absent: absent,
+    entries: entries,
+  );
+}
+
+/// One employee's table attendance, live (keyed by their name).
+final employeeTableAttendanceProvider =
+    Provider.family<EmpTableAttendance, String>((ref, employeeName) {
+  final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
+  return computeEmployeeTableAttendance(tables, employeeName);
+});

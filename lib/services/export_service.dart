@@ -806,6 +806,106 @@ class ExportService {
     return Uint8List.fromList(excel.encode()!);
   }
 
+  /// One employee's whole record as an .xlsx workbook: Summary + Attendance +
+  /// Salary + Leave sheets. Attendance comes from the custom tables (passed in
+  /// as plain rows). Used by the Employee Record (360) screen.
+  Future<Uint8List> buildEmployeeRecordExcel({
+    required EmployeeModel employee,
+    required int presentDays,
+    required int lateDays,
+    required int leaveDays,
+    required int absentDays,
+    required List<({String date, String status, String source})> attendance,
+    required List<PayrollModel> payroll,
+    required List<LeaveRequestModel> leaves,
+    bool includeSalary = true,
+  }) async {
+    final excel = Excel.createExcel();
+
+    final sum = excel['Summary'];
+    void kv(String k, CellValue v) =>
+        sum.appendRow([TextCellValue(k), v]);
+    kv('Name', TextCellValue(employee.fullName));
+    kv('Department', TextCellValue(employee.departmentName ?? '-'));
+    kv('Designation', TextCellValue(employee.position ?? '-'));
+    kv('Email', TextCellValue(employee.email));
+    kv('Phone', TextCellValue(employee.phone ?? '-'));
+    kv('Status', TextCellValue(employee.status.name));
+    if (includeSalary) {
+      kv('Current salary',
+          TextCellValue(employee.salary?.toStringAsFixed(0) ?? '-'));
+    }
+    kv('Present (days)', IntCellValue(presentDays));
+    kv('Late', IntCellValue(lateDays));
+    kv('Leave (days)', IntCellValue(leaveDays));
+    kv('Absent (days)', IntCellValue(absentDays));
+
+    final att = excel['Attendance'];
+    att.appendRow([
+      TextCellValue('Date'),
+      TextCellValue('Status'),
+      TextCellValue('Source'),
+    ]);
+    for (final a in attendance) {
+      att.appendRow([
+        TextCellValue(a.date),
+        TextCellValue(a.status),
+        TextCellValue(a.source),
+      ]);
+    }
+
+    if (includeSalary) {
+      final sal = excel['Salary'];
+      sal.appendRow([
+        TextCellValue('Month'),
+        TextCellValue('Year'),
+        TextCellValue('Base'),
+        TextCellValue('Bonus'),
+        TextCellValue('Deductions'),
+        TextCellValue('Net'),
+        TextCellValue('Status'),
+      ]);
+      for (final p in payroll) {
+        sal.appendRow([
+          IntCellValue(p.month),
+          IntCellValue(p.year),
+          DoubleCellValue(p.baseSalary),
+          DoubleCellValue(p.bonuses),
+          DoubleCellValue(p.deductions),
+          DoubleCellValue(p.calculatedNet),
+          TextCellValue(p.status.name),
+        ]);
+      }
+    }
+
+    final lv = excel['Leave'];
+    lv.appendRow([
+      TextCellValue('Type'),
+      TextCellValue('From'),
+      TextCellValue('To'),
+      TextCellValue('Days'),
+      TextCellValue('Status'),
+      TextCellValue('Reason'),
+    ]);
+    for (final l in leaves) {
+      lv.appendRow([
+        TextCellValue(l.leaveType.name),
+        TextCellValue(_dayFormat.format(l.startDate)),
+        TextCellValue(_dayFormat.format(l.endDate)),
+        IntCellValue(l.days),
+        TextCellValue(l.status.name),
+        TextCellValue(l.reason ?? ''),
+      ]);
+    }
+
+    final def = excel.getDefaultSheet();
+    const kept = {'summary', 'attendance', 'salary', 'leave'};
+    if (def != null && !kept.contains(def.toLowerCase())) {
+      excel.delete(def);
+    }
+    return Uint8List.fromList(excel.encode()!);
+  }
+
   Future<Uint8List> buildPayrollExcel(List<PayrollModel> records) async {
     final excel = Excel.createExcel();
     final sheet = excel['Payroll'];

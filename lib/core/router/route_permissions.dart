@@ -5,6 +5,7 @@ class RoutePermissions {
     '/employees': 'employees_view',
     '/employee-overview': 'employees_view',
     '/employee-search': 'employees_view',
+    '/employee-record': 'employees_view',
     '/departments': 'departments_manage',
     '/users': 'users_manage',
     '/activity': 'audit_view',

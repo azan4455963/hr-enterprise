@@ -47,6 +47,7 @@ class RbacService {
     'me': user.role == RolePermissions.employee,
     'employees': can(user, 'employees_view'),
     'employee-search': can(user, 'employees_view'),
+    'employee-record': can(user, 'employees_view'),
     'departments': can(user, 'departments_manage'),
     'users': RolePermissions.isSuperAdmin(user.role),
     'activity': RolePermissions.isSuperAdmin(user.role),

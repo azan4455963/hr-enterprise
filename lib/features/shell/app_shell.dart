@@ -35,6 +35,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     _NavItem('/tables', 'Tables', Icons.grid_on_rounded),
     _NavItem('/employees', 'Employees', Icons.people_alt_rounded),
     _NavItem('/employee-search', 'Find Employee', Icons.person_search_rounded),
+    _NavItem('/employee-record', 'Employee Record', Icons.fact_check_rounded),
     _NavItem('/attendance', 'Attendance', Icons.event_available_rounded),
     _NavItem('/leave', 'Leave', Icons.beach_access_rounded, badgeKey: 'leave'),
     _NavItem('/payroll', 'Payroll', Icons.account_balance_wallet_rounded),

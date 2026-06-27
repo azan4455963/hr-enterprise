@@ -16,6 +16,7 @@ import '../../features/departments/screens/my_department_screen.dart';
 import '../../features/employees/screens/employee_detail_screen.dart';
 import '../../features/employees/screens/employee_form_screen.dart';
 import '../../features/employees/screens/employee_overview_screen.dart';
+import '../../features/employees/screens/employee_record_screen.dart';
 import '../../features/employees/screens/employee_report_screen.dart';
 import '../../features/employees/screens/employee_search_screen.dart';
 import '../../features/employees/screens/employees_screen.dart';
@@ -84,6 +85,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/employee-search',
             builder: (context, state) => const EmployeeSearchScreen(),
+          ),
+          GoRoute(
+            path: '/employee-record',
+            builder: (context, state) => const EmployeeRecordScreen(),
           ),
           GoRoute(
             path: '/departments',
