@@ -27,6 +27,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _lateMin = 15;
   int _endHour = 18;
   int _endMin = 0;
+  int _dayStartHour = 0;
+  List<WorkShift> _shifts = [];
   bool _saving = false;
 
   @override
@@ -48,6 +50,100 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _lateMin = s.lateAfterMinutes;
     _endHour = s.workEndHour;
     _endMin = s.workEndMinute;
+    _dayStartHour = s.attendanceDayStartHour;
+    _shifts = [...s.shifts];
+  }
+
+  static String _fmtTime(int h, int m) {
+    final period = h < 12 ? 'AM' : 'PM';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12:${m.toString().padLeft(2, '0')} $period';
+  }
+
+  void _addShift() => _shiftDialog();
+  void _editShift(int i) => _shiftDialog(existing: _shifts[i], index: i);
+
+  Future<void> _shiftDialog({WorkShift? existing, int? index}) async {
+    final nameCtrl = TextEditingController(text: existing?.name ?? '');
+    var start = TimeOfDay(
+        hour: existing?.startHour ?? 9, minute: existing?.startMinute ?? 0);
+    var end = TimeOfDay(
+        hour: existing?.endHour ?? 17, minute: existing?.endMinute ?? 0);
+
+    final result = await showDialog<WorkShift>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(existing == null ? 'Add Shift' : 'Edit Shift'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Shift name', hintText: 'e.g. Day, Night'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Start time'),
+                trailing: Text(_fmtTime(start.hour, start.minute)),
+                onTap: () async {
+                  final t =
+                      await showTimePicker(context: ctx, initialTime: start);
+                  if (t != null) setLocal(() => start = t);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('End time'),
+                trailing: Text(_fmtTime(end.hour, end.minute)),
+                onTap: () async {
+                  final t =
+                      await showTimePicker(context: ctx, initialTime: end);
+                  if (t != null) setLocal(() => end = t);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(
+                  ctx,
+                  WorkShift(
+                    name: name,
+                    startHour: start.hour,
+                    startMinute: start.minute,
+                    endHour: end.hour,
+                    endMinute: end.minute,
+                  ),
+                );
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      if (index != null) {
+        _shifts[index] = result;
+      } else {
+        _shifts = [..._shifts, result];
+      }
+    });
+  }
+
+  static String _fmtHour(int h) {
+    final period = h < 12 ? 'AM' : 'PM';
+    final h12 = h % 12 == 0 ? 12 : h % 12;
+    return '$h12:00 $period';
   }
 
   Future<void> _saveSettings() async {
@@ -71,6 +167,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 'sick': allow(_sickAllow, 'sick'),
                 'casual': allow(_casualAllow, 'casual'),
               },
+              attendanceDayStartHour: _dayStartHour,
+              shifts: _shifts,
             ),
           );
       if (mounted) {
@@ -271,6 +369,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           divisions: 8,
                           label: '$_endHour',
                           onChanged: (v) => setState(() => _endHour = v.round()),
+                        ),
+                        const Divider(height: 28),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Work Shifts',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _addShift,
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('Add Shift'),
+                            ),
+                          ],
+                        ),
+                        const Text(
+                          'Add your shifts (name + time). The attendance day '
+                          'then rolls over at the earliest shift start — so '
+                          'night shifts that cross midnight stay in one day.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 4),
+                        for (var i = 0; i < _shifts.length; i++)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                            leading:
+                                const Icon(Icons.schedule_rounded, size: 20),
+                            title: Text(_shifts[i].name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                                '${_fmtTime(_shifts[i].startHour, _shifts[i].startMinute)}'
+                                ' – '
+                                '${_fmtTime(_shifts[i].endHour, _shifts[i].endMinute)}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      size: 18),
+                                  onPressed: () => _editShift(i),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      size: 18, color: Colors.red),
+                                  onPressed: () =>
+                                      setState(() => _shifts.removeAt(i)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const Divider(height: 28),
+                        Text('Day start (used only if no shifts defined): '
+                            '${_fmtHour(_dayStartHour)}'),
+                        Slider(
+                          value: _dayStartHour.toDouble(),
+                          min: 0,
+                          max: 23,
+                          divisions: 23,
+                          label: _fmtHour(_dayStartHour),
+                          onChanged: (v) =>
+                              setState(() => _dayStartHour = v.round()),
                         ),
                         const Divider(height: 28),
                         Text(

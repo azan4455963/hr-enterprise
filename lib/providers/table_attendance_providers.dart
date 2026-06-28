@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../models/data_table_model.dart';
+import 'data_providers.dart';
 import 'data_table_providers.dart';
 
 /// How a single status cell is bucketed.
@@ -166,11 +167,26 @@ TodayAttendance computeTodayAttendance(
   return TodayAttendance(date: day, departments: depts);
 }
 
-/// Live: recomputes whenever any table changes. Uses the current date, so it
-/// rolls over to the new day automatically.
+/// The attendance "business day" for [now]. The day rolls over at
+/// [cutoverMinutes] (minutes-since-midnight; 0 = midnight). Lets a night shift
+/// that crosses midnight (e.g. 5:30 PM → 2:30 AM) count as one day instead of
+/// splitting at 12 AM.
+DateTime businessToday(DateTime now, int cutoverMinutes) {
+  final nowMinutes = now.hour * 60 + now.minute;
+  final shifted = nowMinutes < cutoverMinutes
+      ? now.subtract(const Duration(days: 1))
+      : now;
+  return DateTime(shifted.year, shifted.month, shifted.day);
+}
+
+/// Live: recomputes whenever any table changes. Uses the company's day cutover
+/// (earliest shift start, else the manual hour) so night shifts don't reset at
+/// midnight.
 final tableAttendanceTodayProvider = Provider<TodayAttendance>((ref) {
   final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
-  return computeTodayAttendance(tables, DateTime.now());
+  final cutover =
+      ref.watch(companySettingsProvider).valueOrNull?.dayCutoverMinutes ?? 0;
+  return computeTodayAttendance(tables, businessToday(DateTime.now(), cutover));
 });
 
 /// One per-employee attendance entry for a day (for the log view).
@@ -229,10 +245,13 @@ List<AttendanceLogEntry> computeTodayLog(
   return out;
 }
 
-/// Today's per-employee attendance log from in-app tables (live).
+/// Today's per-employee attendance log from in-app tables (live), using the
+/// company's day-start hour so it matches the dashboard's business day.
 final tableAttendanceLogProvider = Provider<List<AttendanceLogEntry>>((ref) {
   final tables = ref.watch(dataTablesProvider).valueOrNull ?? const [];
-  return computeTodayLog(tables, DateTime.now());
+  final cutover =
+      ref.watch(companySettingsProvider).valueOrNull?.dayCutoverMinutes ?? 0;
+  return computeTodayLog(tables, businessToday(DateTime.now(), cutover));
 });
 
 /// One dated attendance mark for a person, pulled from a custom table.

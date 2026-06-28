@@ -1,5 +1,45 @@
 import 'package:equatable/equatable.dart';
 
+/// A named work shift with a start/end time. Multiple shifts can cover 24h.
+class WorkShift extends Equatable {
+  const WorkShift({
+    required this.name,
+    required this.startHour,
+    required this.startMinute,
+    required this.endHour,
+    required this.endMinute,
+  });
+
+  final String name;
+  final int startHour;
+  final int startMinute;
+  final int endHour;
+  final int endMinute;
+
+  /// Start time as minutes-since-midnight (used to derive the day cutover).
+  int get startMinutes => startHour * 60 + startMinute;
+
+  factory WorkShift.fromMap(Map<String, dynamic> m) => WorkShift(
+        name: m['name'] as String? ?? 'Shift',
+        startHour: (m['startHour'] as num?)?.toInt() ?? 9,
+        startMinute: (m['startMinute'] as num?)?.toInt() ?? 0,
+        endHour: (m['endHour'] as num?)?.toInt() ?? 17,
+        endMinute: (m['endMinute'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'startHour': startHour,
+        'startMinute': startMinute,
+        'endHour': endHour,
+        'endMinute': endMinute,
+      };
+
+  @override
+  List<Object?> get props =>
+      [name, startHour, startMinute, endHour, endMinute];
+}
+
 class CompanySettingsModel extends Equatable {
   const CompanySettingsModel({
     required this.id,
@@ -11,6 +51,8 @@ class CompanySettingsModel extends Equatable {
     this.workEndMinute = 0,
     this.biometricEnabled = false,
     this.leaveAllowances = defaultLeaveAllowances,
+    this.attendanceDayStartHour = 0,
+    this.shifts = const [],
     this.updatedAt,
   });
 
@@ -26,7 +68,27 @@ class CompanySettingsModel extends Equatable {
   /// Annual leave entitlement (days) per leave type, keyed by `LeaveType.name`.
   /// A type with 0 (or absent) is treated as untracked / unlimited (e.g. unpaid).
   final Map<String, int> leaveAllowances;
+
+  /// Hour (0–23) at which the attendance "day" rolls over. 0 = midnight
+  /// (normal). Used only when no [shifts] are defined.
+  final int attendanceDayStartHour;
+
+  /// Defined work shifts (name + time). When present, the attendance day rolls
+  /// over at the earliest shift's start, so night shifts crossing midnight
+  /// stay within one business day.
+  final List<WorkShift> shifts;
   final DateTime? updatedAt;
+
+  /// Minutes-since-midnight at which the attendance day rolls over: the earliest
+  /// shift start if shifts are defined, else the manual hour.
+  int get dayCutoverMinutes {
+    if (shifts.isEmpty) return attendanceDayStartHour * 60;
+    var min = shifts.first.startMinutes;
+    for (final s in shifts) {
+      if (s.startMinutes < min) min = s.startMinutes;
+    }
+    return min;
+  }
 
   /// Sensible starting policy — the admin can change these in Settings.
   static const Map<String, int> defaultLeaveAllowances = {
@@ -56,6 +118,11 @@ class CompanySettingsModel extends Equatable {
       workEndMinute: map['workEndMinute'] as int? ?? 0,
       biometricEnabled: map['biometricEnabled'] as bool? ?? false,
       leaveAllowances: _parseAllowances(map['leaveAllowances']),
+      attendanceDayStartHour:
+          (map['attendanceDayStartHour'] as num?)?.toInt() ?? 0,
+      shifts: (map['shifts'] as List? ?? const [])
+          .map((s) => WorkShift.fromMap(Map<String, dynamic>.from(s as Map)))
+          .toList(),
       updatedAt: _parseDate(map['updatedAt']),
     );
   }
@@ -69,6 +136,8 @@ class CompanySettingsModel extends Equatable {
         'workEndMinute': workEndMinute,
         'biometricEnabled': biometricEnabled,
         'leaveAllowances': leaveAllowances,
+        'attendanceDayStartHour': attendanceDayStartHour,
+        'shifts': [for (final s in shifts) s.toMap()],
         'updatedAt': updatedAt ?? DateTime.now(),
       };
 
@@ -89,5 +158,6 @@ class CompanySettingsModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, companyName, leaveAllowances];
+  List<Object?> get props =>
+      [id, companyName, leaveAllowances, attendanceDayStartHour, shifts];
 }
