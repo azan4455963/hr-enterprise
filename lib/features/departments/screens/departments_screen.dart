@@ -293,7 +293,10 @@ class _DirectorsDialog extends ConsumerWidget {
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: const Text('Department Directors',
-          style: TextStyle(fontWeight: FontWeight.w700)),
+          style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: AppColors.heading)),
       content: SizedBox(
         width: 440,
         child: usersAsync.when(
@@ -336,9 +339,11 @@ class _DirectorsDialog extends ConsumerWidget {
                         leading: const Icon(Icons.verified_user,
                             color: AppColors.pillGreenFg, size: 20),
                         title: Text(u.displayName ?? u.email,
-                            style: const TextStyle(fontSize: 13)),
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.textBody)),
                         subtitle: Text(u.email,
-                            style: const TextStyle(fontSize: 11)),
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textMuted)),
                         trailing: IconButton(
                           icon: const Icon(Icons.remove_circle_outline,
                               color: AppColors.error, size: 20),
@@ -369,10 +374,14 @@ class _DirectorsDialog extends ConsumerWidget {
                                 leading: InitialAvatar(
                                     name: u.displayName ?? u.email, size: 30),
                                 title: Text(u.displayName ?? u.email,
-                                    style: const TextStyle(fontSize: 13)),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.textBody)),
                                 subtitle: Text(
                                     '${u.email} · ${u.role}',
-                                    style: const TextStyle(fontSize: 11)),
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textMuted)),
                                 trailing: TextButton(
                                   onPressed: () => service.assignDirector(
                                       departmentId,

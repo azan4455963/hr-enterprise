@@ -38,6 +38,18 @@ class AppTheme {
           borderRadius: BorderRadius.circular(20),
         ),
       ),
+      // Dialogs use the light surface in both modes, so keep their text dark
+      // and readable (avoids white-on-white text in dialogs).
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.surface,
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.heading,
+        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: AppColors.textBody,
+        ),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.8),
@@ -94,6 +106,18 @@ class AppTheme {
         color: AppColors.darkCard,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
+        ),
+      ),
+      // Dialogs use the light surface in both modes, so keep their text dark
+      // and readable (avoids white-on-white text in dialogs).
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.surface,
+        titleTextStyle: textTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: AppColors.heading,
+        ),
+        contentTextStyle: textTheme.bodyMedium?.copyWith(
+          color: AppColors.textBody,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
