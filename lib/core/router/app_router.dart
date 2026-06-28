@@ -20,7 +20,7 @@ import '../../features/employees/screens/employee_overview_screen.dart';
 import '../../features/employees/screens/employee_record_screen.dart';
 import '../../features/employees/screens/employee_report_screen.dart';
 import '../../features/employees/screens/employee_search_screen.dart';
-import '../../features/employees/screens/employees_screen.dart';
+import '../../features/employees/screens/employees_hub_screen.dart';
 import '../../features/leave/screens/leave_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/onboarding/screens/onboarding_admin_screen.dart';
@@ -122,7 +122,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/employees',
-            builder: (context, state) => const EmployeesScreen(),
+            builder: (context, state) => const EmployeesHubScreen(),
             routes: [
               GoRoute(
                 path: 'new',
