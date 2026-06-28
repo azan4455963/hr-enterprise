@@ -46,8 +46,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     ),
     _NavItem('/reminders', 'Reminders', Icons.notifications_active_rounded),
     _NavItem('/reports', 'Reports', Icons.bar_chart_rounded),
-    _NavItem('/google-sheets', 'Sheets', Icons.table_chart_rounded),
-    _NavItem('/google-drive', 'Google Drive', Icons.cloud_rounded),
+    _NavItem('/google-sheets', 'Sheets & Drive', Icons.table_chart_rounded),
   ];
 
   /// Employee-only nav items (what employees can see)

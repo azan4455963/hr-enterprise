@@ -27,7 +27,7 @@ import '../../features/onboarding/screens/onboarding_admin_screen.dart';
 import '../../features/onboarding/screens/onboarding_public_screen.dart';
 import '../../features/drive/screens/google_drive_admin_screen.dart';
 import '../../features/google_sheets/screens/google_sheet_viewer_screen.dart';
-import '../../features/google_sheets/screens/google_sheets_admin_screen.dart';
+import '../../features/google_sheets/screens/sheets_drive_hub_screen.dart';
 import '../../features/payroll/screens/payroll_screen.dart';
 import '../../features/reminders/screens/reminders_screen.dart';
 import '../../features/reports/screens/reports_screen.dart';
@@ -199,7 +199,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Admin: Google Sheets management
           GoRoute(
             path: '/google-sheets',
-            builder: (context, state) => const GoogleSheetsAdminScreen(),
+            builder: (context, state) => const SheetsDriveHubScreen(),
             routes: [
               GoRoute(
                 path: ':id',

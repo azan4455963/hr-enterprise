@@ -9,7 +9,11 @@ import '../../../providers/auth_provider.dart';
 import '../../../providers/google_sheets_providers.dart';
 
 class GoogleSheetsAdminScreen extends ConsumerWidget {
-  const GoogleSheetsAdminScreen({super.key});
+  const GoogleSheetsAdminScreen({super.key, this.embedded = false});
+
+  /// When shown inside the Sheets & Drive hub (a tab), drop the back button
+  /// and title and keep only the "Add Sheet" action.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -18,28 +22,45 @@ class GoogleSheetsAdminScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.heading),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Attached Sheets',
-          style: TextStyle(
-            color: AppColors.heading,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () => _showAddSheetDialog(context, ref, user?.id ?? ''),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add Sheet'),
-          ),
-        ],
-      ),
+      appBar: embedded
+          ? AppBar(
+              backgroundColor: AppColors.surface,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              toolbarHeight: 52,
+              actions: [
+                TextButton.icon(
+                  onPressed: () =>
+                      _showAddSheetDialog(context, ref, user?.id ?? ''),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add Sheet'),
+                ),
+              ],
+            )
+          : AppBar(
+              backgroundColor: AppColors.surface,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    color: AppColors.heading),
+                onPressed: () => context.pop(),
+              ),
+              title: const Text(
+                'Attached Sheets',
+                style: TextStyle(
+                  color: AppColors.heading,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () =>
+                      _showAddSheetDialog(context, ref, user?.id ?? ''),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add Sheet'),
+                ),
+              ],
+            ),
       body: sheets.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(

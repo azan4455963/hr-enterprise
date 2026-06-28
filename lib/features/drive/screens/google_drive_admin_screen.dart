@@ -12,7 +12,11 @@ import '../../../providers/drive_providers.dart';
 /// as they like; once Google Drive access is connected (OAuth), the sheets
 /// inside these folders feed into employee search.
 class GoogleDriveAdminScreen extends ConsumerWidget {
-  const GoogleDriveAdminScreen({super.key});
+  const GoogleDriveAdminScreen({super.key, this.embedded = false});
+
+  /// When shown inside the Sheets & Drive hub (a tab), drop the back button
+  /// and title and keep only the "Link Drive" action.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,27 +25,43 @@ class GoogleDriveAdminScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.canvas,
-      appBar: AppBar(
-        backgroundColor: AppColors.surface,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: AppColors.heading),
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/google-sheets'),
-        ),
-        title: const Text(
-          'Google Drive',
-          style:
-              TextStyle(color: AppColors.heading, fontWeight: FontWeight.w700),
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: () => _showAddDialog(context, ref, user?.id ?? ''),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Link Drive'),
-          ),
-        ],
-      ),
+      appBar: embedded
+          ? AppBar(
+              backgroundColor: AppColors.surface,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              toolbarHeight: 52,
+              actions: [
+                TextButton.icon(
+                  onPressed: () => _showAddDialog(context, ref, user?.id ?? ''),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Link Drive'),
+                ),
+              ],
+            )
+          : AppBar(
+              backgroundColor: AppColors.surface,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_rounded,
+                    color: AppColors.heading),
+                onPressed: () => context.canPop()
+                    ? context.pop()
+                    : context.go('/google-sheets'),
+              ),
+              title: const Text(
+                'Google Drive',
+                style: TextStyle(
+                    color: AppColors.heading, fontWeight: FontWeight.w700),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () => _showAddDialog(context, ref, user?.id ?? ''),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Link Drive'),
+                ),
+              ],
+            ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
