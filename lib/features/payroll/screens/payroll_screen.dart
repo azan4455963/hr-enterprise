@@ -10,6 +10,7 @@ import '../../../core/widgets/permission_gate.dart';
 import '../../../models/employee_model.dart';
 import '../../../models/payroll_model.dart';
 import '../../../providers/data_providers.dart';
+import '../../../providers/data_table_providers.dart';
 import '../../../providers/service_providers.dart';
 
 /// The month being viewed on the Payroll screen.
@@ -75,7 +76,14 @@ class PayrollScreen extends ConsumerWidget {
                     permission: 'payroll_edit',
                     child: Wrap(
                       spacing: 8,
+                      runSpacing: 8,
                       children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _slipsFromSheet(context, ref),
+                          icon: const Icon(Icons.receipt_long_outlined,
+                              size: 18),
+                          label: const Text('Slips from sheet'),
+                        ),
                         OutlinedButton.icon(
                           onPressed: () => _generateMonth(context, ref),
                           icon: const Icon(Icons.bolt_outlined, size: 18),
@@ -200,6 +208,90 @@ class PayrollScreen extends ConsumerWidget {
           await ref.read(payrollServiceProvider).createMany(toCreate);
       messenger.showSnackBar(
           SnackBar(content: Text('Generated $n payroll record(s) for $label.')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(AppException.from(e).message)));
+    }
+  }
+
+  // ── Generate salary slips from a Salary Workbook sheet ────────────────────
+  Future<void> _slipsFromSheet(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final tables = ref.read(dataTablesProvider).valueOrNull ?? const [];
+    if (tables.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('No tables yet — create a Salary Workbook first.')));
+      return;
+    }
+    var tableId = tables.first.id;
+    var sheetIdx = 0;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final table = tables.firstWhere((t) => t.id == tableId,
+              orElse: () => tables.first);
+          if (sheetIdx >= table.sheets.length) sheetIdx = 0;
+          return AlertDialog(
+            title: const Text('Generate salary slips'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: tableId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Salary sheet'),
+                  items: [
+                    for (final t in tables)
+                      DropdownMenuItem(value: t.id, child: Text(t.name)),
+                  ],
+                  onChanged: (v) => setLocal(() {
+                    tableId = v ?? tableId;
+                    sheetIdx = 0;
+                  }),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  key: ValueKey(tableId),
+                  initialValue: sheetIdx,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Month tab'),
+                  items: [
+                    for (var i = 0; i < table.sheets.length; i++)
+                      DropdownMenuItem(
+                          value: i, child: Text(table.sheets[i].name)),
+                  ],
+                  onChanged: (v) => setLocal(() => sheetIdx = v ?? 0),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Generate')),
+            ],
+          );
+        },
+      ),
+    );
+    if (go != true) return;
+
+    final table =
+        tables.firstWhere((t) => t.id == tableId, orElse: () => tables.first);
+    final sheet = table.sheets[sheetIdx.clamp(0, table.sheets.length - 1)];
+    final company =
+        ref.read(companySettingsProvider).valueOrNull?.companyName ?? 'Company';
+    try {
+      await ref.read(exportServiceProvider).shareSalarySlipsPdf(
+            companyName: company,
+            monthLabel: sheet.name,
+            columns: sheet.columns,
+            rows: sheet.rows,
+          );
     } catch (e) {
       messenger.showSnackBar(
           SnackBar(content: Text(AppException.from(e).message)));

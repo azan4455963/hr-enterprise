@@ -242,6 +242,121 @@ class ExportService {
     );
   }
 
+  /// Generate one salary slip per employee row from a Salary Workbook sheet,
+  /// combined into a single PDF. Adapts to whatever columns the sheet has:
+  /// each non-empty cell becomes a line (label = column header), the "Net
+  /// Salary" column is emphasised, and the "Employee Name" column is the title.
+  Future<void> shareSalarySlipsPdf({
+    required String companyName,
+    required String monthLabel,
+    required List<String> columns,
+    required List<List<String>> rows,
+  }) async {
+    final nameIdx =
+        columns.indexWhere((c) => c.toLowerCase().contains('name'));
+    final netIdx = columns.indexWhere((c) {
+      final l = c.toLowerCase();
+      return l.contains('net') && (l.contains('salary') || l.contains('pay'));
+    });
+
+    final doc = pw.Document();
+    var count = 0;
+    for (final row in rows) {
+      if (!row.any((c) => c.trim().isNotEmpty)) continue;
+      final name =
+          (nameIdx >= 0 && nameIdx < row.length) ? row[nameIdx].trim() : '';
+      if (name.isEmpty) continue;
+      count++;
+      doc.addPage(
+        pw.Page(
+          margin: const pw.EdgeInsets.all(28),
+          build: (context) => _salarySlip(
+              companyName, monthLabel, columns, row, nameIdx, netIdx, name),
+        ),
+      );
+    }
+    if (count == 0) {
+      throw Exception(
+          'No employee rows found. The sheet needs an "Employee Name" column '
+          'with names filled in.');
+    }
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'salary_slips_${monthLabel.replaceAll(' ', '_')}.pdf',
+    );
+  }
+
+  pw.Widget _salarySlip(String company, String month, List<String> cols,
+      List<String> row, int nameIdx, int netIdx, String name) {
+    final lines = <pw.Widget>[];
+    for (var i = 0; i < cols.length; i++) {
+      if (i == nameIdx) continue;
+      final v = (i < row.length ? row[i] : '').trim();
+      if (v.isEmpty) continue;
+      final isNet = i == netIdx;
+      lines.add(pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 3),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Expanded(
+              child: pw.Text(cols[i],
+                  style: pw.TextStyle(
+                      fontSize: 10,
+                      fontWeight:
+                          isNet ? pw.FontWeight.bold : pw.FontWeight.normal,
+                      color: isNet ? PdfColors.indigo : PdfColors.grey800)),
+            ),
+            pw.Text(v,
+                style: pw.TextStyle(
+                    fontSize: 10,
+                    fontWeight:
+                        isNet ? pw.FontWeight.bold : pw.FontWeight.normal)),
+          ],
+        ),
+      ));
+    }
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Container(
+          width: double.infinity,
+          padding: const pw.EdgeInsets.all(16),
+          color: PdfColors.indigo50,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(company,
+                  style: pw.TextStyle(
+                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.Text('SALARY SLIP — $month',
+                  style:
+                      pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        pw.Text(name,
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 10),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(12),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(color: PdfColors.grey400),
+            borderRadius: pw.BorderRadius.circular(6),
+          ),
+          child: pw.Column(children: lines),
+        ),
+        pw.Spacer(),
+        pw.Divider(),
+        pw.Text('System-generated salary slip. '
+            'Generated ${_dateFormat.format(DateTime.now())}.',
+            style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+      ],
+    );
+  }
+
   /// Self-service "My Report" PDF for an employee — profile, leave summary +
   /// history, and the monthly salary breakdown. Built only from data the
   /// employee can read (no EmployeeModel needed). PDF only, web-safe.

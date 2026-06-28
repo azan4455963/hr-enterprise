@@ -4,6 +4,28 @@ import 'package:intl/intl.dart';
 import '../models/data_table_model.dart';
 import 'audit_service.dart';
 
+/// Default columns for a Salary Workbook (admin can rename / add / delete).
+const List<String> kSalaryWorkbookColumns = [
+  'Source',
+  'Employee Name',
+  'Branch Code',
+  'Account Number',
+  'Basic Salary',
+  'Leave Deduction',
+  'Travelling/Bonuses/Increment',
+  'Gross Salary',
+  'Medical Allowance 10%',
+  'Taxable Income',
+  'Tax',
+  'Advance Salary',
+  'Loan Deduction',
+  'Net Salary',
+  'Reason',
+  'Deductions',
+  'Bonus Cash Paid',
+  'Additional',
+];
+
 /// CRUD for custom in-app data tables (`data_tables`). A table is a workbook of
 /// one or more [DataSheet] tabs.
 class DataTableService {
@@ -118,6 +140,39 @@ class DataTableService {
       module: 'tables',
       targetId: ref.id,
       details: {'name': name, 'type': 'import', 'tabs': safeSheets.length},
+    );
+    return ref.id;
+  }
+
+  /// Salary workbook: 12 month tabs (Jan–Dec of [year]), each pre-set with the
+  /// salary columns and some empty rows to fill (one row per employee).
+  Future<String> createSalaryWorkbook({
+    required String name,
+    required int year,
+    required String userId,
+  }) async {
+    final sheets = <Map<String, dynamic>>[];
+    for (var m = 1; m <= 12; m++) {
+      sheets.add(DataSheet(
+        name: DateFormat('MMMM').format(DateTime(year, m)),
+        columns: kSalaryWorkbookColumns,
+        rows: List.generate(
+            12, (_) => List<String>.filled(kSalaryWorkbookColumns.length, '')),
+      ).toMap());
+    }
+    final ref = await _ref.add({
+      'name': name.trim(),
+      'sheets': sheets,
+      'createdBy': userId,
+      'createdAt': DateTime.now(),
+      'updatedAt': DateTime.now(),
+    });
+    await _audit.log(
+      userId: userId,
+      action: 'create',
+      module: 'tables',
+      targetId: ref.id,
+      details: {'name': name, 'type': 'salary', 'year': year},
     );
     return ref.id;
   }

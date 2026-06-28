@@ -127,6 +127,11 @@ class DataTablesScreen extends ConsumerWidget {
             icon: Icons.event_available_rounded,
             onPressed: () => Navigator.pop(ctx, 'attendance'),
           ),
+          PrimaryButton(
+            label: 'Salary workbook (12 months)',
+            icon: Icons.payments_rounded,
+            onPressed: () => Navigator.pop(ctx, 'salary'),
+          ),
         ],
       ),
     );
@@ -139,6 +144,16 @@ class DataTablesScreen extends ConsumerWidget {
           hint: 'Department name — e.g. IT, Billing');
       if (name == null || name.trim().isEmpty) return;
       final id = await ref.read(dataTableServiceProvider).createAttendanceWorkbook(
+            name: name.trim(),
+            year: DateTime.now().year,
+            userId: userId,
+          );
+      if (context.mounted) context.go('/tables/$id');
+    } else if (type == 'salary') {
+      final name = await _nameDialog(context,
+          title: 'New Salary Workbook', hint: 'e.g. 2026 Salaries');
+      if (name == null || name.trim().isEmpty) return;
+      final id = await ref.read(dataTableServiceProvider).createSalaryWorkbook(
             name: name.trim(),
             year: DateTime.now().year,
             userId: userId,
