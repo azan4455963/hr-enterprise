@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -272,6 +273,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// A titled settings card with an icon header and optional subtitle/trailing.
+  Widget _section({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    required Widget child,
+  }) {
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.brandNavy.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 19, color: AppColors.brandNavy),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700, color: AppColors.heading),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(subtitle,
+                style: const TextStyle(
+                    fontSize: 12.5, color: AppColors.textMuted)),
+          ],
+          const SizedBox(height: 16),
+          child,
+        ],
+      ),
+    );
+  }
+
+  /// A labelled slider row with the current value shown on the right.
+  Widget _sliderRow(String label, String value, Widget slider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w500, color: AppColors.textBody)),
+            ),
+            Text(value,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, color: AppColors.brandNavy)),
+          ],
+        ),
+        slider,
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
@@ -294,11 +364,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                 ),
-                const SizedBox(height: 24),
-                GlassCard(
+                const SizedBox(height: 4),
+                const Text('Manage your company preferences.',
+                    style: TextStyle(color: AppColors.textMuted)),
+                const SizedBox(height: 22),
+                _section(
+                  icon: Icons.tune_rounded,
+                  title: 'Appearance & Security',
                   child: Column(
                     children: [
                       SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
                         title: const Text('Dark Mode'),
                         value: themeMode == ThemeMode.dark,
                         onChanged: (_) =>
@@ -309,8 +385,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         builder: (_, snap) {
                           final enabled = snap.data ?? false;
                           return SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
                             title: const Text('Biometric Login'),
-                            subtitle: Text(enabled ? 'Enabled' : 'Use fingerprint / face to sign in'),
+                            subtitle: Text(enabled
+                                ? 'Enabled'
+                                : 'Use fingerprint / face to sign in'),
                             value: enabled,
                             onChanged: (v) {
                               if (v) {
@@ -327,148 +406,192 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 if (canEdit) ...[
                   const SizedBox(height: 16),
-                  GlassCard(
+                  _section(
+                    icon: Icons.business_rounded,
+                    title: 'Company',
+                    child: TextField(
+                      controller: _companyName,
+                      decoration: const InputDecoration(
+                        labelText: 'Company Name',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _section(
+                    icon: Icons.schedule_rounded,
+                    title: 'Work Hours',
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Company Settings',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _companyName,
-                          decoration: const InputDecoration(labelText: 'Company Name'),
-                        ),
-                        const SizedBox(height: 8),
-                        Text('Work start: $_startHour:${_startMin.toString().padLeft(2, '0')}'),
-                        Slider(
-                          value: _startHour.toDouble(),
-                          min: 6,
-                          max: 12,
-                          divisions: 6,
-                          label: '$_startHour',
-                          onChanged: (v) => setState(() => _startHour = v.round()),
-                        ),
-                        Text('Late after: $_lateMin minutes'),
-                        Slider(
-                          value: _lateMin.toDouble(),
-                          min: 0,
-                          max: 60,
-                          divisions: 12,
-                          label: '$_lateMin',
-                          onChanged: (v) => setState(() => _lateMin = v.round()),
-                        ),
-                        Text('Work end: $_endHour:${_endMin.toString().padLeft(2, '0')}'),
-                        Slider(
-                          value: _endHour.toDouble(),
-                          min: 14,
-                          max: 22,
-                          divisions: 8,
-                          label: '$_endHour',
-                          onChanged: (v) => setState(() => _endHour = v.round()),
-                        ),
-                        const Divider(height: 28),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Work Shifts',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            TextButton.icon(
-                              onPressed: _addShift,
-                              icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Add Shift'),
-                            ),
-                          ],
-                        ),
-                        const Text(
-                          'Add your shifts (name + time). The attendance day '
-                          'then rolls over at the earliest shift start — so '
-                          'night shifts that cross midnight stay in one day.',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                        const SizedBox(height: 4),
-                        for (var i = 0; i < _shifts.length; i++)
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                            leading:
-                                const Icon(Icons.schedule_rounded, size: 20),
-                            title: Text(_shifts[i].name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                                '${_fmtTime(_shifts[i].startHour, _shifts[i].startMinute)}'
-                                ' – '
-                                '${_fmtTime(_shifts[i].endHour, _shifts[i].endMinute)}'),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined,
-                                      size: 18),
-                                  onPressed: () => _editShift(i),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      size: 18, color: Colors.red),
-                                  onPressed: () =>
-                                      setState(() => _shifts.removeAt(i)),
-                                ),
-                              ],
-                            ),
+                        _sliderRow(
+                          'Work start',
+                          _fmtHour(_startHour),
+                          Slider(
+                            value: _startHour.toDouble(),
+                            min: 6,
+                            max: 12,
+                            divisions: 6,
+                            label: _fmtHour(_startHour),
+                            onChanged: (v) =>
+                                setState(() => _startHour = v.round()),
                           ),
-                        const Divider(height: 28),
-                        Text('Day start (used only if no shifts defined): '
-                            '${_fmtHour(_dayStartHour)}'),
-                        Slider(
-                          value: _dayStartHour.toDouble(),
-                          min: 0,
-                          max: 23,
-                          divisions: 23,
-                          label: _fmtHour(_dayStartHour),
-                          onChanged: (v) =>
-                              setState(() => _dayStartHour = v.round()),
                         ),
-                        const Divider(height: 28),
-                        Text(
-                          'Leave Allowances (days per year)',
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                        _sliderRow(
+                          'Late after',
+                          '$_lateMin min',
+                          Slider(
+                            value: _lateMin.toDouble(),
+                            min: 0,
+                            max: 60,
+                            divisions: 12,
+                            label: '$_lateMin',
+                            onChanged: (v) =>
+                                setState(() => _lateMin = v.round()),
+                          ),
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Each employee\'s remaining balance is this minus the '
-                          'leave they\'ve taken this year. Set 0 to not track a type.',
-                          style: TextStyle(fontSize: 12.5),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(child: _allowanceField('Annual', _annualAllow)),
-                            const SizedBox(width: 10),
-                            Expanded(child: _allowanceField('Sick', _sickAllow)),
-                            const SizedBox(width: 10),
-                            Expanded(child: _allowanceField('Casual', _casualAllow)),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _saving ? null : _saveSettings,
-                          child: _saving
-                              ? const CircularProgressIndicator()
-                              : const Text('Save Company Settings'),
+                        _sliderRow(
+                          'Work end',
+                          _fmtHour(_endHour),
+                          Slider(
+                            value: _endHour.toDouble(),
+                            min: 14,
+                            max: 22,
+                            divisions: 8,
+                            label: _fmtHour(_endHour),
+                            onChanged: (v) =>
+                                setState(() => _endHour = v.round()),
+                          ),
                         ),
                       ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _section(
+                    icon: Icons.work_history_rounded,
+                    title: 'Work Shifts',
+                    subtitle:
+                        'Add shifts (name + time). The attendance day rolls '
+                        'over at the earliest shift start — so night shifts '
+                        'that cross midnight stay in one day.',
+                    trailing: TextButton.icon(
+                      onPressed: _addShift,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add Shift'),
+                    ),
+                    child: Column(
+                      children: [
+                        if (_shifts.isEmpty)
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Text('No shifts yet.',
+                                  style:
+                                      TextStyle(color: AppColors.textMuted)),
+                            ),
+                          )
+                        else
+                          for (var i = 0; i < _shifts.length; i++)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: AppColors.canvas,
+                                borderRadius: BorderRadius.circular(10),
+                                border:
+                                    Border.all(color: AppColors.cardBorder),
+                              ),
+                              child: ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.schedule_rounded,
+                                    size: 20, color: AppColors.brandNavy),
+                                title: Text(_shifts[i].name,
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600)),
+                                subtitle: Text(
+                                    '${_fmtTime(_shifts[i].startHour, _shifts[i].startMinute)} – '
+                                    '${_fmtTime(_shifts[i].endHour, _shifts[i].endMinute)}'),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined,
+                                          size: 18),
+                                      onPressed: () => _editShift(i),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline,
+                                          size: 18, color: AppColors.error),
+                                      onPressed: () => setState(
+                                          () => _shifts.removeAt(i)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        if (_shifts.isEmpty) ...[
+                          const SizedBox(height: 8),
+                          _sliderRow(
+                            'Day rollover',
+                            _fmtHour(_dayStartHour),
+                            Slider(
+                              value: _dayStartHour.toDouble(),
+                              min: 0,
+                              max: 23,
+                              divisions: 23,
+                              label: _fmtHour(_dayStartHour),
+                              onChanged: (v) =>
+                                  setState(() => _dayStartHour = v.round()),
+                            ),
+                          ),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Used only when no shifts are defined. '
+                              '12 AM = normal.',
+                              style: TextStyle(
+                                  fontSize: 11.5, color: AppColors.textFaint),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _section(
+                    icon: Icons.beach_access_rounded,
+                    title: 'Leave Allowances',
+                    subtitle:
+                        'Days per year per type. A balance = this minus leave '
+                        'taken this year. Set 0 to not track a type.',
+                    child: Row(
+                      children: [
+                        Expanded(
+                            child: _allowanceField('Annual', _annualAllow)),
+                        const SizedBox(width: 10),
+                        Expanded(child: _allowanceField('Sick', _sickAllow)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                            child: _allowanceField('Casual', _casualAllow)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _saving ? null : _saveSettings,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.save_rounded),
+                      label: Text(_saving ? 'Saving…' : 'Save Settings'),
                     ),
                   ),
                 ],
