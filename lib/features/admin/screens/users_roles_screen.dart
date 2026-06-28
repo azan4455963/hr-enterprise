@@ -245,6 +245,7 @@ class _RoleDialogState extends ConsumerState<_RoleDialog> {
               else
                 ...departments.map((d) => CheckboxListTile(
                       value: _depts.contains(d.name),
+                      activeColor: AppColors.brandNavy,
                       onChanged: (v) => setState(() {
                         if (v == true) {
                           _depts.add(d.name);
@@ -252,7 +253,9 @@ class _RoleDialogState extends ConsumerState<_RoleDialog> {
                           _depts.remove(d.name);
                         }
                       }),
-                      title: Text(d.name),
+                      title: Text(d.name,
+                          style: const TextStyle(
+                              fontSize: 13.5, color: AppColors.textBody)),
                       dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
                     )),
