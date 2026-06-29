@@ -53,6 +53,7 @@ class CompanySettingsModel extends Equatable {
     this.leaveAllowances = defaultLeaveAllowances,
     this.attendanceDayStartHour = 0,
     this.shifts = const [],
+    this.timezone = '',
     this.updatedAt,
   });
 
@@ -77,6 +78,9 @@ class CompanySettingsModel extends Equatable {
   /// over at the earliest shift's start, so night shifts crossing midnight
   /// stay within one business day.
   final List<WorkShift> shifts;
+
+  /// Display-only timezone label (does not yet affect time calculations).
+  final String timezone;
   final DateTime? updatedAt;
 
   /// Minutes-since-midnight at which the attendance day rolls over: the earliest
@@ -123,6 +127,7 @@ class CompanySettingsModel extends Equatable {
       shifts: (map['shifts'] as List? ?? const [])
           .map((s) => WorkShift.fromMap(Map<String, dynamic>.from(s as Map)))
           .toList(),
+      timezone: map['timezone'] as String? ?? '',
       updatedAt: _parseDate(map['updatedAt']),
     );
   }
@@ -138,6 +143,7 @@ class CompanySettingsModel extends Equatable {
         'leaveAllowances': leaveAllowances,
         'attendanceDayStartHour': attendanceDayStartHour,
         'shifts': [for (final s in shifts) s.toMap()],
+        'timezone': timezone,
         'updatedAt': updatedAt ?? DateTime.now(),
       };
 
@@ -158,6 +164,12 @@ class CompanySettingsModel extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [id, companyName, leaveAllowances, attendanceDayStartHour, shifts];
+  List<Object?> get props => [
+        id,
+        companyName,
+        leaveAllowances,
+        attendanceDayStartHour,
+        shifts,
+        timezone,
+      ];
 }

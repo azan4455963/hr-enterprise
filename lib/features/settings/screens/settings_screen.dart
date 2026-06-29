@@ -23,14 +23,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _annualAllow = TextEditingController();
   final _sickAllow = TextEditingController();
   final _casualAllow = TextEditingController();
+  final _lateCtrl = TextEditingController();
   int _startHour = 9;
   int _startMin = 0;
-  int _lateMin = 15;
   int _endHour = 18;
   int _endMin = 0;
   int _dayStartHour = 0;
+  String _timezone = '';
   List<WorkShift> _shifts = [];
   bool _saving = false;
+
+  static const _timezones = [
+    'Not set',
+    'Pakistan (PKT)',
+    'India (IST)',
+    'Gulf (GST)',
+    'UK (GMT/BST)',
+    'Eastern Time (ET)',
+    'Central Time (CT)',
+    'Pacific Time (PT)',
+    'UTC',
+  ];
 
   @override
   void dispose() {
@@ -38,6 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _annualAllow.dispose();
     _sickAllow.dispose();
     _casualAllow.dispose();
+    _lateCtrl.dispose();
     super.dispose();
   }
 
@@ -48,10 +62,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _casualAllow.text = (s.allowanceForName('casual')).toString();
     _startHour = s.workStartHour;
     _startMin = s.workStartMinute;
-    _lateMin = s.lateAfterMinutes;
+    _lateCtrl.text = '${s.lateAfterMinutes}';
     _endHour = s.workEndHour;
     _endMin = s.workEndMinute;
     _dayStartHour = s.attendanceDayStartHour;
+    _timezone = s.timezone.isEmpty ? 'Not set' : s.timezone;
     _shifts = [...s.shifts];
   }
 
@@ -159,7 +174,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               companyName: _companyName.text.trim(),
               workStartHour: _startHour,
               workStartMinute: _startMin,
-              lateAfterMinutes: _lateMin,
+              lateAfterMinutes:
+                  int.tryParse(_lateCtrl.text.trim()) ?? current.lateAfterMinutes,
               workEndHour: _endHour,
               workEndMinute: _endMin,
               biometricEnabled: current.biometricEnabled,
@@ -170,6 +186,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               },
               attendanceDayStartHour: _dayStartHour,
               shifts: _shifts,
+              timezone: _timezone == 'Not set' ? '' : _timezone,
             ),
           );
       if (mounted) {
@@ -342,6 +359,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// A labelled row with a tappable time pill (opens a time picker; you can
+  /// type the time in it too).
+  Widget _timeRow(
+      String label, int hour, int minute, void Function(int, int) onPick) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w500, color: AppColors.textBody)),
+          ),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              final t = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(hour: hour, minute: minute),
+              );
+              if (t != null) onPick(t.hour, t.minute);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.canvas,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.cardBorder),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.access_time_rounded,
+                      size: 15, color: AppColors.brandNavy),
+                  const SizedBox(width: 6),
+                  Text(_fmtTime(hour, minute),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.brandNavy)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
@@ -353,63 +418,84 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: settings.when(
         data: (s) {
           if (_companyName.text.isEmpty) _load(s);
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Settings',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+          return LayoutBuilder(
+            builder: (context, c) {
+              final wide = c.maxWidth >= 880;
+
+              final header = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Settings',
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Manage your company preferences.',
+                      style: TextStyle(color: AppColors.textMuted)),
+                ],
+              );
+
+              final appearanceCard = _section(
+                icon: Icons.tune_rounded,
+                title: 'Appearance & Security',
+                child: Column(
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Dark Mode'),
+                      value: themeMode == ThemeMode.dark,
+                      onChanged: (_) =>
+                          ref.read(themeModeProvider.notifier).toggle(),
+                    ),
+                    FutureBuilder(
+                      future: ref.read(biometricServiceProvider).isEnabled(),
+                      builder: (_, snap) {
+                        final enabled = snap.data ?? false;
+                        return SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Biometric Login'),
+                          subtitle: Text(enabled
+                              ? 'Enabled'
+                              : 'Use fingerprint / face to sign in'),
+                          value: enabled,
+                          onChanged: (v) {
+                            if (v) {
+                              _enableBiometricAfterLogin();
+                            } else {
+                              _toggleBiometric(false);
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                const Text('Manage your company preferences.',
-                    style: TextStyle(color: AppColors.textMuted)),
-                const SizedBox(height: 22),
-                _section(
-                  icon: Icons.tune_rounded,
-                  title: 'Appearance & Security',
+              );
+
+              if (!canEdit) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Dark Mode'),
-                        value: themeMode == ThemeMode.dark,
-                        onChanged: (_) =>
-                            ref.read(themeModeProvider.notifier).toggle(),
-                      ),
-                      FutureBuilder(
-                        future: ref.read(biometricServiceProvider).isEnabled(),
-                        builder: (_, snap) {
-                          final enabled = snap.data ?? false;
-                          return SwitchListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text('Biometric Login'),
-                            subtitle: Text(enabled
-                                ? 'Enabled'
-                                : 'Use fingerprint / face to sign in'),
-                            value: enabled,
-                            onChanged: (v) {
-                              if (v) {
-                                _enableBiometricAfterLogin();
-                              } else {
-                                _toggleBiometric(false);
-                              }
-                            },
-                          );
-                        },
-                      ),
+                      header,
+                      const SizedBox(height: 22),
+                      appearanceCard,
                     ],
                   ),
-                ),
-                if (canEdit) ...[
-                  const SizedBox(height: 16),
-                  _section(
-                    icon: Icons.business_rounded,
-                    title: 'Company',
-                    child: TextField(
+                );
+              }
+
+              final companyCard = _section(
+                icon: Icons.business_rounded,
+                title: 'General',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
                       controller: _companyName,
                       decoration: const InputDecoration(
                         labelText: 'Company Name',
@@ -417,186 +503,260 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _section(
-                    icon: Icons.schedule_rounded,
-                    title: 'Work Hours',
-                    child: Column(
-                      children: [
-                        _sliderRow(
-                          'Work start',
-                          _fmtHour(_startHour),
-                          Slider(
-                            value: _startHour.toDouble(),
-                            min: 6,
-                            max: 12,
-                            divisions: 6,
-                            label: _fmtHour(_startHour),
-                            onChanged: (v) =>
-                                setState(() => _startHour = v.round()),
-                          ),
-                        ),
-                        _sliderRow(
-                          'Late after',
-                          '$_lateMin min',
-                          Slider(
-                            value: _lateMin.toDouble(),
-                            min: 0,
-                            max: 60,
-                            divisions: 12,
-                            label: '$_lateMin',
-                            onChanged: (v) =>
-                                setState(() => _lateMin = v.round()),
-                          ),
-                        ),
-                        _sliderRow(
-                          'Work end',
-                          _fmtHour(_endHour),
-                          Slider(
-                            value: _endHour.toDouble(),
-                            min: 14,
-                            max: 22,
-                            divisions: 8,
-                            label: _fmtHour(_endHour),
-                            onChanged: (v) =>
-                                setState(() => _endHour = v.round()),
-                          ),
-                        ),
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      initialValue: _timezones.contains(_timezone)
+                          ? _timezone
+                          : 'Not set',
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Timezone',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        for (final t in _timezones)
+                          DropdownMenuItem(value: t, child: Text(t)),
                       ],
+                      onChanged: (v) =>
+                          setState(() => _timezone = v ?? 'Not set'),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _section(
-                    icon: Icons.work_history_rounded,
-                    title: 'Work Shifts',
-                    subtitle:
-                        'Add shifts (name + time). The attendance day rolls '
-                        'over at the earliest shift start — so night shifts '
-                        'that cross midnight stay in one day.',
-                    trailing: TextButton.icon(
-                      onPressed: _addShift,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('Add Shift'),
-                    ),
-                    child: Column(
-                      children: [
-                        if (_shifts.isEmpty)
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Text('No shifts yet.',
-                                  style:
-                                      TextStyle(color: AppColors.textMuted)),
-                            ),
-                          )
-                        else
-                          for (var i = 0; i < _shifts.length; i++)
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              decoration: BoxDecoration(
-                                color: AppColors.canvas,
-                                borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(color: AppColors.cardBorder),
-                              ),
-                              child: ListTile(
-                                dense: true,
-                                leading: const Icon(Icons.schedule_rounded,
-                                    size: 20, color: AppColors.brandNavy),
-                                title: Text(_shifts[i].name,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600)),
-                                subtitle: Text(
-                                    '${_fmtTime(_shifts[i].startHour, _shifts[i].startMinute)} – '
-                                    '${_fmtTime(_shifts[i].endHour, _shifts[i].endMinute)}'),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit_outlined,
-                                          size: 18),
-                                      onPressed: () => _editShift(i),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline,
-                                          size: 18, color: AppColors.error),
-                                      onPressed: () => setState(
-                                          () => _shifts.removeAt(i)),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        if (_shifts.isEmpty) ...[
-                          const SizedBox(height: 8),
-                          _sliderRow(
-                            'Day rollover',
-                            _fmtHour(_dayStartHour),
-                            Slider(
-                              value: _dayStartHour.toDouble(),
-                              min: 0,
-                              max: 23,
-                              divisions: 23,
-                              label: _fmtHour(_dayStartHour),
-                              onChanged: (v) =>
-                                  setState(() => _dayStartHour = v.round()),
-                            ),
+                  ],
+                ),
+              );
+
+              final workHoursCard = _section(
+                icon: Icons.schedule_rounded,
+                title: 'Work Hours',
+                child: Column(
+                  children: [
+                    _timeRow('Work start', _startHour, _startMin, (h, m) {
+                      setState(() {
+                        _startHour = h;
+                        _startMin = m;
+                      });
+                    }),
+                    const Divider(height: 1),
+                    _timeRow('Work end', _endHour, _endMin, (h, m) {
+                      setState(() {
+                        _endHour = h;
+                        _endMin = m;
+                      });
+                    }),
+                    const Divider(height: 1),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text('Late after (grace)',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textBody)),
                           ),
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'Used only when no shifts are defined. '
-                              '12 AM = normal.',
-                              style: TextStyle(
-                                  fontSize: 11.5, color: AppColors.textFaint),
+                          SizedBox(
+                            width: 96,
+                            child: TextField(
+                              controller: _lateCtrl,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                suffixText: 'min',
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _section(
-                    icon: Icons.beach_access_rounded,
-                    title: 'Leave Allowances',
-                    subtitle:
-                        'Days per year per type. A balance = this minus leave '
-                        'taken this year. Set 0 to not track a type.',
-                    child: Row(
+                  ],
+                ),
+              );
+
+              final shiftsCard = _section(
+                icon: Icons.work_history_rounded,
+                title: 'Work Shifts',
+                subtitle:
+                    'Add shifts (name + time). The attendance day rolls over '
+                    'at the earliest shift start — so night shifts that cross '
+                    'midnight stay in one day.',
+                trailing: TextButton.icon(
+                  onPressed: _addShift,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Shift'),
+                ),
+                child: Column(
+                  children: [
+                    if (_shifts.isEmpty)
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Text('No shifts yet.',
+                              style: TextStyle(color: AppColors.textMuted)),
+                        ),
+                      )
+                    else
+                      for (var i = 0; i < _shifts.length; i++)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: AppColors.canvas,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.cardBorder),
+                          ),
+                          child: ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.schedule_rounded,
+                                size: 20, color: AppColors.brandNavy),
+                            title: Text(_shifts[i].name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Text(
+                                '${_fmtTime(_shifts[i].startHour, _shifts[i].startMinute)} – '
+                                '${_fmtTime(_shifts[i].endHour, _shifts[i].endMinute)}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.edit_outlined,
+                                      size: 18),
+                                  onPressed: () => _editShift(i),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline,
+                                      size: 18, color: AppColors.error),
+                                  onPressed: () =>
+                                      setState(() => _shifts.removeAt(i)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    if (_shifts.isEmpty) ...[
+                      const SizedBox(height: 8),
+                      _sliderRow(
+                        'Day rollover',
+                        _fmtHour(_dayStartHour),
+                        Slider(
+                          value: _dayStartHour.toDouble(),
+                          min: 0,
+                          max: 23,
+                          divisions: 23,
+                          label: _fmtHour(_dayStartHour),
+                          onChanged: (v) =>
+                              setState(() => _dayStartHour = v.round()),
+                        ),
+                      ),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Used only when no shifts are defined. 12 AM = normal.',
+                          style: TextStyle(
+                              fontSize: 11.5, color: AppColors.textFaint),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+
+              final leaveCard = _section(
+                icon: Icons.beach_access_rounded,
+                title: 'Leave Allowances',
+                subtitle:
+                    'Days per year per type. A balance = this minus leave '
+                    'taken this year. Set 0 to not track a type.',
+                child: Row(
+                  children: [
+                    Expanded(child: _allowanceField('Annual', _annualAllow)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _allowanceField('Sick', _sickAllow)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _allowanceField('Casual', _casualAllow)),
+                  ],
+                ),
+              );
+
+              final saveBtn = ElevatedButton.icon(
+                onPressed: _saving ? null : _saveSettings,
+                style: ElevatedButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                ),
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save_rounded),
+                label: Text(_saving ? 'Saving…' : 'Save Configuration'),
+              );
+
+              final Widget grid = wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                            child: _allowanceField('Annual', _annualAllow)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _allowanceField('Sick', _sickAllow)),
-                        const SizedBox(width: 10),
+                          flex: 5,
+                          child: Column(
+                            children: [
+                              companyCard,
+                              const SizedBox(height: 16),
+                              appearanceCard,
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
                         Expanded(
-                            child: _allowanceField('Casual', _casualAllow)),
+                          flex: 7,
+                          child: Column(
+                            children: [
+                              workHoursCard,
+                              const SizedBox(height: 16),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: leaveCard),
+                                  const SizedBox(width: 16),
+                                  Expanded(child: shiftsCard),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _saving ? null : _saveSettings,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      icon: _saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.save_rounded),
-                      label: Text(_saving ? 'Saving…' : 'Save Settings'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                    )
+                  : Column(
+                      children: [
+                        companyCard,
+                        const SizedBox(height: 16),
+                        appearanceCard,
+                        const SizedBox(height: 16),
+                        workHoursCard,
+                        const SizedBox(height: 16),
+                        leaveCard,
+                        const SizedBox(height: 16),
+                        shiftsCard,
+                      ],
+                    );
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    header,
+                    const SizedBox(height: 22),
+                    grid,
+                    const SizedBox(height: 22),
+                    Align(alignment: Alignment.centerRight, child: saveBtn),
+                  ],
+                ),
+              );
+            },
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
