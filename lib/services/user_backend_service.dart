@@ -100,6 +100,10 @@ class UserBackendService {
 
   Future<UserModel?> getUserByUid(String uid) => _users.getById(uid);
 
+  /// Update a user's own profile fields (displayName / photoUrl).
+  Future<void> updateProfileFields(String uid, Map<String, dynamic> data) =>
+      _users.updateUser(uid, data);
+
   Stream<UserModel?> watchUserByUid(String uid) => _users.watchById(uid);
 
   /// Always load role from Firestore `users/{uid}`.

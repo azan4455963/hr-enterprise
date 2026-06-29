@@ -14,6 +14,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/data_providers.dart';
 import '../../providers/google_sheets_providers.dart';
 import '../../providers/service_providers.dart';
+import '../../providers/theme_provider.dart';
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, required this.child});
@@ -63,6 +64,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final location = GoRouterState.of(context).uri.path;
     final employeeViewMode = ref.watch(employeeViewModeProvider);
     final isAdmin = user != null && RolePermissions.isSuperAdmin(user.role);
+    final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
     final visibleItems = _navItems.where((item) {
       // If in employee view mode, only show employee-accessible items
@@ -99,13 +101,18 @@ class _AppShellState extends ConsumerState<AppShell> {
       children: [
         _TopBar(
           userName: user?.displayName ?? 'User',
-          role: RolePermissions.effectiveRole(
-            user?.role ?? RolePermissions.employee,
-          ).replaceAll('_', ' '),
+          role: RolePermissions.roleLabel(
+              user?.role ?? RolePermissions.employee),
+          photoUrl: user?.photoUrl,
           alertsBadge: alertsBadge,
+          isDark: isDark,
           onSearch: () => showEmployeeSearchDialog(context, ref),
           onNotifications: () => context.go('/notifications'),
           onSettings: () => context.go('/settings'),
+          onProfile: () => context.go('/profile'),
+          onToggleDarkMode: () =>
+              ref.read(themeModeProvider.notifier).toggle(),
+          onSignOut: () => _signOut(context, ref),
           showMenu: !isDesktop,
           employeeViewMode: employeeViewMode,
           isAdmin: isAdmin,
@@ -287,6 +294,11 @@ class _TopBar extends StatelessWidget {
     required this.onNotifications,
     required this.onSettings,
     required this.showMenu,
+    this.photoUrl,
+    this.isDark = false,
+    this.onProfile,
+    this.onToggleDarkMode,
+    this.onSignOut,
     this.employeeViewMode = false,
     this.isAdmin = false,
     this.onToggleEmployeeView,
@@ -299,6 +311,11 @@ class _TopBar extends StatelessWidget {
   final VoidCallback onNotifications;
   final VoidCallback onSettings;
   final bool showMenu;
+  final String? photoUrl;
+  final bool isDark;
+  final VoidCallback? onProfile;
+  final VoidCallback? onToggleDarkMode;
+  final VoidCallback? onSignOut;
   final bool employeeViewMode;
   final bool isAdmin;
   final VoidCallback? onToggleEmployeeView;
@@ -432,30 +449,94 @@ class _TopBar extends StatelessWidget {
           const SizedBox(width: 14),
           Container(width: 1, height: 28, color: AppColors.cardBorder),
           const SizedBox(width: 14),
-          InitialAvatar(name: userName, size: 34),
-          const SizedBox(width: 10),
-          if (MediaQuery.of(context).size.width > 600)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          PopupMenuButton<String>(
+            tooltip: 'Account',
+            position: PopupMenuPosition.under,
+            onSelected: (v) {
+              if (v == 'profile') {
+                onProfile?.call();
+              } else if (v == 'settings') {
+                onSettings();
+              } else if (v == 'dark') {
+                onToggleDarkMode?.call();
+              } else if (v == 'signout') {
+                onSignOut?.call();
+              }
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: 'profile',
+                child: Row(children: [
+                  Icon(Icons.person_outline_rounded, size: 18),
+                  SizedBox(width: 10),
+                  Text('My Profile'),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(children: [
+                  Icon(Icons.settings_outlined, size: 18),
+                  SizedBox(width: 10),
+                  Text('Settings'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'dark',
+                child: Row(children: [
+                  Icon(
+                      isDark
+                          ? Icons.light_mode_outlined
+                          : Icons.dark_mode_outlined,
+                      size: 18),
+                  const SizedBox(width: 10),
+                  Text(isDark ? 'Light mode' : 'Dark mode'),
+                ]),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
+                value: 'signout',
+                child: Row(children: [
+                  Icon(Icons.logout_rounded, size: 18, color: AppColors.error),
+                  SizedBox(width: 10),
+                  Text('Sign out', style: TextStyle(color: AppColors.error)),
+                ]),
+              ),
+            ],
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  userName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.heading,
+                (photoUrl != null && photoUrl!.isNotEmpty)
+                    ? CircleAvatar(
+                        radius: 17, backgroundImage: NetworkImage(photoUrl!))
+                    : InitialAvatar(name: userName, size: 34),
+                const SizedBox(width: 10),
+                if (MediaQuery.of(context).size.width > 600)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        userName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.heading,
+                        ),
+                      ),
+                      Text(
+                        role,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Text(
-                  role,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                  ),
-                ),
+                const Icon(Icons.arrow_drop_down_rounded,
+                    color: AppColors.textMuted),
               ],
             ),
+          ),
         ],
       ),
     );

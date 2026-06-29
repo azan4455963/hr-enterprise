@@ -23,6 +23,7 @@ import '../../features/employees/screens/employee_search_screen.dart';
 import '../../features/employees/screens/employees_hub_screen.dart';
 import '../../features/leave/screens/leave_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
+import '../../features/profile/screens/profile_screen.dart';
 import '../../features/onboarding/screens/onboarding_admin_screen.dart';
 import '../../features/onboarding/screens/onboarding_public_screen.dart';
 import '../../features/drive/screens/google_drive_admin_screen.dart';
@@ -79,6 +80,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/me',
             builder: (context, state) => const MySpaceScreen(),
+          ),
+          GoRoute(
+            path: '/profile',
+            builder: (context, state) => const ProfileScreen(),
           ),
           GoRoute(
             path: '/employee-overview',

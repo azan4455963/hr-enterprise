@@ -184,6 +184,29 @@ class AuthService {
     await _auth.sendPasswordResetEmail(email: email.trim());
   }
 
+  /// Whether the signed-in user has an email/password login (vs Google-only).
+  bool get hasPasswordProvider =>
+      _auth.currentUser?.providerData
+          .any((p) => p.providerId == 'password') ??
+      false;
+
+  /// Update the signed-in user's own display name / photo (Auth + Firestore).
+  Future<void> updateMyProfile({String? displayName, String? photoUrl}) async {
+    final u = _auth.currentUser;
+    if (u == null) return;
+    final data = <String, dynamic>{};
+    final name = displayName?.trim();
+    if (name != null && name.isNotEmpty) {
+      await u.updateDisplayName(name);
+      data['displayName'] = name;
+    }
+    if (photoUrl != null) {
+      await u.updatePhotoURL(photoUrl);
+      data['photoUrl'] = photoUrl;
+    }
+    if (data.isNotEmpty) await _userBackend.updateProfileFields(u.uid, data);
+  }
+
   Future<void> signOut() async {
     final uid = _auth.currentUser?.uid;
     try {

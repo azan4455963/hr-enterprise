@@ -59,6 +59,23 @@ class RolePermissions {
   static String effectiveRole(String role) =>
       isRoleEnabled(role) ? role : employee;
 
+  /// Human-friendly role label for display (super_admin shown simply as Admin).
+  static String roleLabel(String role) {
+    switch (effectiveRole(role)) {
+      case superAdmin:
+      case admin:
+        return 'Admin';
+      case manager:
+        return 'Director';
+      case hrManager:
+        return 'HR Manager';
+      case employee:
+        return 'Employee';
+      default:
+        return role.replaceAll('_', ' ');
+    }
+  }
+
   static bool isSuperAdmin(String? role) => role == superAdmin;
 
   static bool isOrganizationAdmin(String? role) =>
