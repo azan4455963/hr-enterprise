@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/async_value_widget.dart';
@@ -88,7 +89,9 @@ class LeaveScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) => Theme(
+          data: AppTheme.light(),
+          child: AlertDialog(
           title: const Text('Request Leave'),
           content: Form(
             key: formKey,
@@ -250,6 +253,7 @@ class LeaveScreen extends ConsumerWidget {
               child: const Text('Submit'),
             ),
           ],
+          ),
         ),
       ),
     );
