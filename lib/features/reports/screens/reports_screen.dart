@@ -177,16 +177,18 @@ class _Grid extends StatelessWidget {
     }
     final rows = <Widget>[];
     for (var i = 0; i < cards.length; i += 2) {
-      rows.add(Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: cards[i]),
-          const SizedBox(width: 16),
-          if (i + 1 < cards.length)
-            Expanded(child: cards[i + 1])
-          else
-            const Expanded(child: SizedBox.shrink()),
-        ],
+      rows.add(IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: cards[i]),
+            const SizedBox(width: 16),
+            if (i + 1 < cards.length)
+              Expanded(child: cards[i + 1])
+            else
+              const Expanded(child: SizedBox.shrink()),
+          ],
+        ),
       ));
       if (i + 2 < cards.length) rows.add(const SizedBox(height: 16));
     }
