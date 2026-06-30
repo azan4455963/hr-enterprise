@@ -246,18 +246,29 @@ class _NotLinkedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AppCard(
-      child: Row(
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.link_off_rounded, color: AppColors.textFaint),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              "Your account isn't linked to an employee profile yet. Ask your "
-              'admin to link it so you can see your leave balance, attendance '
-              'and salary, and apply for leave.',
-              style: TextStyle(color: AppColors.textMuted),
-            ),
+          const Row(
+            children: [
+              Icon(Icons.link_off_rounded, color: AppColors.textFaint),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Your account isn't linked to an employee profile yet. Add "
+                  'your information and an admin will review it — then your '
+                  'leave, attendance and salary will appear here.',
+                  style: TextStyle(color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          PrimaryButton(
+            label: 'Add my information',
+            icon: Icons.person_add_alt_1_rounded,
+            onPressed: () => context.go('/my-info'),
           ),
         ],
       ),

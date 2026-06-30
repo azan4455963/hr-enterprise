@@ -82,6 +82,18 @@ class OnboardingService {
     return submission.id;
   }
 
+  /// A signed-in user submits their own details directly (no token link). Lands
+  /// in the same admin review queue; on approval the created employee record is
+  /// linked back to the user by matching email.
+  Future<void> selfSubmit(OnboardingSubmissionModel submission) async {
+    final data = submission.toMap();
+    data['status'] = OnboardingSubmissionStatus.submitted.name;
+    data['submittedAt'] = DateTime.now();
+    data['linkId'] = 'self';
+    data['isSelfSubmission'] = true;
+    await _submissions.add(data);
+  }
+
   Future<void> submitApplication(OnboardingSubmissionModel submission) async {
     final data = submission.toMap();
     data['status'] = OnboardingSubmissionStatus.submitted.name;

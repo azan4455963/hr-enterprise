@@ -206,6 +206,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 16),
 
+              // Self-onboarding for users not yet linked to an employee record
+              if (!RolePermissions.isSuperAdmin(user.role) &&
+                  (user.employeeId == null || user.employeeId!.isEmpty)) ...[
+                _myInfoPromptCard(),
+                const SizedBox(height: 16),
+              ],
+
               // Request access (not for admins — they have everything)
               if (!RolePermissions.isSuperAdmin(user.role)) ...[
                 _requestAccessCard(user),
@@ -287,6 +294,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textBody)),
+            ),
+          ],
+        ),
+      );
+
+  Widget _myInfoPromptCard() => _card(
+        'Employee Profile',
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "You're not linked to an employee record yet. Add your "
+              'information — an admin will review it, then your leave, '
+              'attendance and salary will appear in My Space.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            PrimaryButton(
+              label: 'Add my information',
+              icon: Icons.person_add_alt_1_rounded,
+              onPressed: () => context.go('/my-info'),
             ),
           ],
         ),
