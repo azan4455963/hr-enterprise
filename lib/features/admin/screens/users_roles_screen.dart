@@ -4,6 +4,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
@@ -138,6 +139,14 @@ class _UserCard extends ConsumerWidget {
                       Text('Change role'),
                     ]),
                   ),
+                  const PopupMenuItem(
+                    value: 'access',
+                    child: Row(children: [
+                      Icon(Icons.tune_rounded, size: 18),
+                      SizedBox(width: 10),
+                      Text('Feature access'),
+                    ]),
+                  ),
                   PopupMenuItem(
                     value: 'toggle',
                     child: Row(children: [
@@ -178,6 +187,230 @@ class _UserCard extends ConsumerWidget {
         context: context,
         builder: (_) => _RoleDialog(user: user, adminId: me?.id ?? ''),
       );
+      return;
+    }
+    if (action == 'access') {
+      await showDialog(
+        context: context,
+        builder: (_) => _AccessDialog(user: user, adminId: me?.id ?? ''),
+      );
+    }
+  }
+}
+
+IconData _moduleIcon(String name) {
+  switch (name) {
+    case 'dashboard':
+      return Icons.dashboard_rounded;
+    case 'people':
+      return Icons.people_alt_rounded;
+    case 'clock':
+      return Icons.access_time_rounded;
+    case 'leave':
+      return Icons.beach_access_rounded;
+    case 'pay':
+      return Icons.account_balance_wallet_rounded;
+    case 'reports':
+      return Icons.bar_chart_rounded;
+    case 'tables':
+      return Icons.grid_on_rounded;
+    case 'assets':
+      return Icons.devices_rounded;
+    case 'onboarding':
+      return Icons.person_add_alt_1_rounded;
+    case 'sheets':
+      return Icons.table_chart_rounded;
+    case 'departments':
+      return Icons.apartment_rounded;
+    case 'bell':
+      return Icons.notifications_rounded;
+    default:
+      return Icons.tune_rounded;
+  }
+}
+
+/// Per-user feature access editor. Admin ticks the features a user may use;
+/// the selection is saved to `users/{uid}.permissions`, which overrides the
+/// user's role defaults (rules + nav + buttons all respect it immediately).
+class _AccessDialog extends ConsumerStatefulWidget {
+  const _AccessDialog({required this.user, required this.adminId});
+  final UserModel user;
+  final String adminId;
+
+  @override
+  ConsumerState<_AccessDialog> createState() => _AccessDialogState();
+}
+
+class _AccessDialogState extends ConsumerState<_AccessDialog> {
+  late final Set<String> _selected;
+  bool _saving = false;
+
+  bool get _isAdmin => RolePermissions.isSuperAdmin(widget.user.role);
+
+  @override
+  void initState() {
+    super.initState();
+    final resolved = RolePermissions.resolvedPermissions(
+      role: widget.user.role,
+      storedPermissions: widget.user.permissions,
+    ).toSet();
+    _selected = {
+      for (final k in GrantableAccess.allKeys)
+        if (resolved.contains(k)) k,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.user.displayName ?? widget.user.email;
+    return Theme(
+      data: AppTheme.light(),
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            const Icon(Icons.tune_rounded, color: AppColors.brandNavy),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text('Feature access — $name',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: AppColors.brandNavy),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: 470,
+          child: _isAdmin
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'This user is an Admin and already has full access to '
+                    'everything. Change their role to Director or Employee '
+                    'first if you want to limit their access.',
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                )
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tick the features $name can use. This overrides their '
+                        'role defaults — leave everything unticked to fall back '
+                        'to the role.',
+                        style: const TextStyle(
+                            fontSize: 12.5, color: AppColors.textMuted),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final m in GrantableAccess.modules) _moduleTile(m),
+                    ],
+                  ),
+                ),
+        ),
+        actions: _isAdmin
+            ? [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ]
+            : [
+                TextButton(
+                  onPressed: _saving ? null : () => _save(const <String>[]),
+                  child: const Text('Reset to default'),
+                ),
+                TextButton(
+                  onPressed: _saving ? null : () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                PrimaryButton(
+                  label: _saving ? 'Saving…' : 'Save',
+                  onPressed:
+                      _saving ? () {} : () => _save(_selected.toList()),
+                ),
+              ],
+      ),
+    );
+  }
+
+  Widget _moduleTile(GrantModule m) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(_moduleIcon(m.icon), size: 18, color: AppColors.brandNavy),
+              const SizedBox(width: 8),
+              Text(m.label,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      color: AppColors.heading)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final p in m.perms)
+                FilterChip(
+                  label: Text(p.label),
+                  selected: _selected.contains(p.key),
+                  showCheckmark: true,
+                  visualDensity: VisualDensity.compact,
+                  labelStyle: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: _selected.contains(p.key)
+                        ? AppColors.brandNavy
+                        : AppColors.textBody,
+                  ),
+                  selectedColor: AppColors.brandBlueSoft,
+                  checkmarkColor: AppColors.brandNavy,
+                  backgroundColor: AppColors.canvas,
+                  side: BorderSide(
+                      color: _selected.contains(p.key)
+                          ? AppColors.brandNavy
+                          : AppColors.cardBorder),
+                  onSelected: _saving
+                      ? null
+                      : (v) => setState(() {
+                            if (v) {
+                              _selected.add(p.key);
+                            } else {
+                              _selected.remove(p.key);
+                            }
+                          }),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _save(List<String> permissions) async {
+    setState(() => _saving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(userAdminServiceProvider).setPermissions(
+            uid: widget.user.id,
+            permissions: permissions,
+            adminId: widget.adminId,
+          );
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+      }
     }
   }
 }

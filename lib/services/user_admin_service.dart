@@ -42,6 +42,24 @@ class UserAdminService {
     );
   }
 
+  /// Replace a user's explicit feature grants. A non-empty list overrides the
+  /// user's role defaults entirely; an empty list falls back to role defaults.
+  /// Super admins are left untouched (they always keep `['*']`).
+  Future<void> setPermissions({
+    required String uid,
+    required List<String> permissions,
+    required String adminId,
+  }) async {
+    await _users.updateUser(uid, {'permissions': permissions});
+    await _audit.log(
+      userId: adminId,
+      action: 'update',
+      module: 'users',
+      targetId: uid,
+      details: {'permissions': permissions},
+    );
+  }
+
   /// Enable or disable a user account.
   Future<void> setActive({
     required String uid,

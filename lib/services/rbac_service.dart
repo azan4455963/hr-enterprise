@@ -49,15 +49,18 @@ class RbacService {
     'employee-search': can(user, 'employees_view'),
     'employee-record': can(user, 'employees_view'),
     'departments': can(user, 'departments_manage'),
+    // Users & Roles and the Activity log stay super-admin only so a grant can
+    // never escalate someone into managing other people's access.
     'users': RolePermissions.isSuperAdmin(user.role),
     'activity': RolePermissions.isSuperAdmin(user.role),
-    'tables': RolePermissions.isSuperAdmin(user.role),
-    'assets': RolePermissions.isSuperAdmin(user.role),
+    // Grantable per-user: an admin can hand Tables / Assets access to anyone.
+    'tables': can(user, 'tables_manage'),
+    'assets': can(user, 'assets_manage'),
     'my-department': user.role == RolePermissions.manager,
-    // Attendance lives in admin-only custom tables, so a plain employee can't
-    // render it — hide it for them (their self-service is in My Space).
-    'attendance':
-        can(user, 'attendance_view') && user.role != RolePermissions.employee,
+    // The admin Attendance page is a management view — gated on attendance_edit
+    // so plain employees (view-only, self-service in My Space) don't see it, but
+    // an admin can grant the page to a director or any user.
+    'attendance': can(user, 'attendance_edit'),
     'leave': can(user, 'leave_view'),
     'payroll': can(user, 'payroll_view'),
     'reports': can(user, 'reports_view'),

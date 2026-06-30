@@ -265,3 +265,78 @@ class RolePermissions {
     return null;
   }
 }
+
+/// One grantable permission (a key + a short action label for the UI).
+class GrantPerm {
+  const GrantPerm(this.key, this.label);
+  final String key;
+  final String label;
+}
+
+/// A module whose individual permissions an admin can grant per-user.
+class GrantModule {
+  const GrantModule(this.label, this.icon, this.perms);
+  final String label;
+  final String icon; // material icon name resolved in the UI
+  final List<GrantPerm> perms;
+}
+
+/// The catalogue of features an admin can hand to any user from Users & Roles.
+/// Deliberately excludes the super-admin-only areas (Users & Roles, Settings,
+/// Activity log) so a grant can never escalate someone into an admin.
+class GrantableAccess {
+  static const List<GrantModule> modules = [
+    GrantModule('Dashboard', 'dashboard', [
+      GrantPerm('dashboard_view', 'View'),
+    ]),
+    GrantModule('Employees', 'people', [
+      GrantPerm('employees_view', 'View'),
+      GrantPerm('employees_create', 'Create'),
+      GrantPerm('employees_edit', 'Edit'),
+      GrantPerm('employees_delete', 'Delete'),
+    ]),
+    GrantModule('Attendance', 'clock', [
+      GrantPerm('attendance_view', 'View'),
+      GrantPerm('attendance_edit', 'Manage'),
+    ]),
+    GrantModule('Leave', 'leave', [
+      GrantPerm('leave_view', 'View'),
+      GrantPerm('leave_create', 'Apply'),
+      GrantPerm('leave_approve', 'Approve'),
+    ]),
+    GrantModule('Payroll', 'pay', [
+      GrantPerm('payroll_view', 'View'),
+      GrantPerm('payroll_edit', 'Edit'),
+    ]),
+    GrantModule('Reports', 'reports', [
+      GrantPerm('reports_view', 'View'),
+      GrantPerm('reports_export', 'Export'),
+    ]),
+    GrantModule('Tables', 'tables', [
+      GrantPerm('tables_manage', 'Full access'),
+    ]),
+    GrantModule('Assets', 'assets', [
+      GrantPerm('assets_manage', 'Full access'),
+    ]),
+    GrantModule('Onboarding', 'onboarding', [
+      GrantPerm('onboarding_view', 'View'),
+      GrantPerm('onboarding_create', 'Create'),
+    ]),
+    GrantModule('Sheets & Drive', 'sheets', [
+      GrantPerm('googleSheets_view', 'View'),
+      GrantPerm('googleSheets_create', 'Create'),
+      GrantPerm('googleSheets_edit', 'Edit'),
+      GrantPerm('googleSheets_delete', 'Delete'),
+    ]),
+    GrantModule('Departments', 'departments', [
+      GrantPerm('departments_manage', 'Manage'),
+    ]),
+    GrantModule('Notifications', 'bell', [
+      GrantPerm('notifications_view', 'View'),
+    ]),
+  ];
+
+  /// Every distinct grantable permission key (flattened, de-duplicated).
+  static List<String> get allKeys =>
+      {for (final m in modules) for (final p in m.perms) p.key}.toList();
+}

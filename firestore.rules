@@ -192,11 +192,13 @@ service cloud.firestore {
     }
 
     match /data_tables/{id} {
-      allow read, write: if isAdminRole();
+      allow read: if isSignedIn() && hasPerm('tables_manage');
+      allow write: if isSignedIn() && hasPerm('tables_manage');
     }
 
     match /assets/{id} {
-      allow read, write: if isAdminRole();
+      allow read: if isSignedIn() && hasPerm('assets_manage');
+      allow write: if isSignedIn() && hasPerm('assets_manage');
     }
   }
 }
