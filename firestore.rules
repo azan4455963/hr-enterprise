@@ -102,12 +102,23 @@ service cloud.firestore {
 
     match /attendance/{id} {
       allow read: if isSignedIn() && hasPerm('attendance_view');
-      allow create: if isSignedIn() && hasPerm('attendance_view') &&
-        hasLinkedEmployee() &&
-        request.resource.data.employeeId == userDoc().employeeId;
-      allow update: if isSignedIn() && hasPerm('attendance_view') &&
-        hasLinkedEmployee() &&
-        resource.data.employeeId == userDoc().employeeId;
+      // Self check-in / QR writes own record; a manager/admin with
+      // attendance_edit may mark their team (record carries departmentName,
+      // scoped via inMyDept — admins pass for any department).
+      allow create: if isSignedIn() && (
+        (hasPerm('attendance_view') && hasLinkedEmployee() &&
+          request.resource.data.employeeId == userDoc().employeeId) ||
+        (hasPerm('attendance_edit') &&
+          ('departmentName' in request.resource.data) &&
+          inMyDept(request.resource.data.departmentName))
+      );
+      allow update: if isSignedIn() && (
+        (hasPerm('attendance_view') && hasLinkedEmployee() &&
+          resource.data.employeeId == userDoc().employeeId) ||
+        (hasPerm('attendance_edit') &&
+          ('departmentName' in request.resource.data) &&
+          inMyDept(request.resource.data.departmentName))
+      );
       allow delete: if isSignedIn() && hasPerm('attendance_edit');
     }
 

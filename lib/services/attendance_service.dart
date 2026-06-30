@@ -180,11 +180,13 @@ class AttendanceService {
     }
   }
 
-  /// Admin/assistant: set today's attendance for a specific employee
-  /// (creates or updates today's record).
+  /// Admin / director: set today's attendance for a specific employee
+  /// (creates or updates today's record). [departmentName] is stamped on the
+  /// record so Firestore rules can scope a director to their own department.
   Future<void> markToday({
     required String employeeId,
     String? employeeName,
+    String? departmentName,
     required AttendanceStatus status,
   }) async {
     final now = DateTime.now();
@@ -196,6 +198,8 @@ class AttendanceService {
       await _attendance.updateRecord(docRef.id, data: {
         'status': status.name,
         'timestamp': Timestamp.fromDate(now),
+        'departmentName': ?departmentName,
+        'employeeName': ?employeeName,
         if (atWork) 'checkIn': Timestamp.fromDate(now),
       });
     } else {
@@ -205,6 +209,7 @@ class AttendanceService {
         timestamp: now,
         method: 'manual',
         employeeName: employeeName,
+        departmentName: departmentName,
         date: today,
         checkIn: atWork ? now : null,
       );

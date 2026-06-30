@@ -13,6 +13,7 @@ class AttendanceModel extends Equatable {
     required this.employeeId,
     required this.date,
     this.employeeName,
+    this.departmentName,
     this.checkIn,
     this.checkOut,
     this.status = AttendanceStatus.present,
@@ -26,6 +27,7 @@ class AttendanceModel extends Equatable {
   final String id;
   final String employeeId;
   final String? employeeName;
+  final String? departmentName;
   final DateTime date;
   final DateTime? checkIn;
   final DateTime? checkOut;
@@ -42,6 +44,7 @@ class AttendanceModel extends Equatable {
       id: id,
       employeeId: map['employeeId'] as String? ?? '',
       employeeName: map['employeeName'] as String?,
+      departmentName: map['departmentName'] as String?,
       date: parseFirestoreDate(map['date']) ?? DateTime.now(),
       checkIn: parseFirestoreDate(map['checkIn']),
       checkOut: parseFirestoreDate(map['checkOut']),
@@ -63,6 +66,7 @@ class AttendanceModel extends Equatable {
     return {
       'employeeId': employeeId,
       'employeeName': employeeName,
+      'departmentName': departmentName,
       'date': Timestamp.fromDate(date),
       'timestamp': Timestamp.fromDate(ts),
       'checkIn': checkIn != null ? Timestamp.fromDate(checkIn!) : null,
