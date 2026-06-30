@@ -9,7 +9,11 @@ import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../../../models/access_request_model.dart';
+import '../../../models/notification_model.dart';
+import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/data_providers.dart';
 import '../../../providers/service_providers.dart';
 
 /// The signed-in user's own profile: edit name + photo, change password (via a
@@ -27,6 +31,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _savingName = false;
   bool _uploadingPhoto = false;
   bool _sendingReset = false;
+  String? _reqSelected;
+  bool _reqSending = false;
 
   @override
   void dispose() {
@@ -200,6 +206,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 16),
 
+              // Request access (not for admins — they have everything)
+              if (!RolePermissions.isSuperAdmin(user.role)) ...[
+                _requestAccessCard(user),
+                const SizedBox(height: 16),
+              ],
+
               // Account info
               _card(
                 'Account',
@@ -279,6 +291,151 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
       );
+
+  Widget _requestAccessCard(UserModel user) {
+    final seen = <String>{};
+    final candidates = <({String key, String module, String perm})>[];
+    for (final m in GrantableAccess.modules) {
+      for (final p in m.perms) {
+        if (seen.add(p.key) && !user.hasPermission(p.key)) {
+          candidates.add((key: p.key, module: m.label, perm: p.label));
+        }
+      }
+    }
+    final myReqs =
+        ref.watch(myAccessRequestsProvider(user.id)).valueOrNull ?? const [];
+    final selectedValid =
+        candidates.any((c) => c.key == _reqSelected) ? _reqSelected : null;
+
+    return _card(
+      'Request Access',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Ask an admin to unlock a feature for you.',
+            style: TextStyle(fontSize: 12.5, color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          if (candidates.isEmpty)
+            const Text('You already have every available feature.',
+                style: TextStyle(color: AppColors.textMuted))
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedValid,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Feature',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final c in candidates)
+                        DropdownMenuItem(
+                          value: c.key,
+                          child: Text('${c.module} · ${c.perm}',
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: _reqSending
+                        ? null
+                        : (v) => setState(() => _reqSelected = v),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                PrimaryButton(
+                  label: _reqSending ? 'Sending…' : 'Request',
+                  icon: Icons.send_rounded,
+                  onPressed: (_reqSending || selectedValid == null)
+                      ? () {}
+                      : () => _requestAccess(user, candidates),
+                ),
+              ],
+            ),
+          if (myReqs.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('My requests',
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted)),
+            const SizedBox(height: 6),
+            for (final r in myReqs.take(8))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('${r.moduleLabel} · ${r.permLabel}',
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textBody)),
+                    ),
+                    _reqStatusPill(r.status),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _reqStatusPill(AccessRequestStatus s) {
+    final (label, color) = switch (s) {
+      AccessRequestStatus.approved => ('Approved', AppColors.success),
+      AccessRequestStatus.rejected => ('Declined', AppColors.error),
+      AccessRequestStatus.pending => ('Pending', AppColors.warning),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+
+  Future<void> _requestAccess(
+      UserModel user,
+      List<({String key, String module, String perm})> candidates) async {
+    final key = _reqSelected;
+    if (key == null) return;
+    final cand = candidates.firstWhere((c) => c.key == key);
+    setState(() => _reqSending = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(accessRequestServiceProvider).create(
+            userId: user.id,
+            userName: user.displayName ?? user.email,
+            userEmail: user.email,
+            permission: cand.key,
+            moduleLabel: cand.module,
+            permLabel: cand.perm,
+          );
+      await ref.read(messagingServiceProvider).notifyRole(
+            title: 'New access request',
+            body:
+                '${user.displayName ?? user.email} requested ${cand.module} · ${cand.perm}',
+            type: NotificationType.system,
+            targetRoles: [RolePermissions.superAdmin],
+          );
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Request sent to admin')));
+      if (mounted) setState(() => _reqSelected = null);
+    } catch (e) {
+      messenger
+          .showSnackBar(SnackBar(content: Text(AppException.from(e).message)));
+    } finally {
+      if (mounted) setState(() => _reqSending = false);
+    }
+  }
 
   Future<void> _saveName() async {
     final messenger = ScaffoldMessenger.of(context);

@@ -6,6 +6,8 @@ import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../../../models/access_request_model.dart';
+import '../../../models/notification_model.dart';
 import '../../../models/user_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
@@ -33,6 +35,7 @@ class UsersRolesScreen extends ConsumerWidget {
                 'Manage who is Admin, Director or Employee. Admin only.',
           ),
           const SizedBox(height: 20),
+          const _PendingRequests(),
           usersAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) =>
@@ -195,6 +198,137 @@ class _UserCard extends ConsumerWidget {
         builder: (_) => _AccessDialog(user: user, adminId: me?.id ?? ''),
       );
     }
+  }
+}
+
+/// Admin section: pending feature-access requests with approve / reject.
+class _PendingRequests extends ConsumerWidget {
+  const _PendingRequests();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending =
+        ref.watch(pendingAccessRequestsProvider).valueOrNull ?? const [];
+    if (pending.isEmpty) return const SizedBox.shrink();
+    final me = ref.watch(currentUserProvider).valueOrNull;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.lock_clock_outlined,
+                    size: 18, color: AppColors.brandNavy),
+                const SizedBox(width: 8),
+                Text('Access requests (${pending.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: AppColors.heading)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final r in pending)
+              _RequestRow(req: r, adminId: me?.id ?? ''),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestRow extends ConsumerStatefulWidget {
+  const _RequestRow({required this.req, required this.adminId});
+  final AccessRequestModel req;
+  final String adminId;
+
+  @override
+  ConsumerState<_RequestRow> createState() => _RequestRowState();
+}
+
+class _RequestRowState extends ConsumerState<_RequestRow> {
+  bool _busy = false;
+
+  Future<void> _decide(bool approve) async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final svc = ref.read(accessRequestServiceProvider);
+    final msg = ref.read(messagingServiceProvider);
+    final r = widget.req;
+    try {
+      if (approve) {
+        await svc.approve(r, widget.adminId);
+        await msg.notifyRole(
+          title: 'Access granted',
+          body: 'You can now use ${r.moduleLabel} · ${r.permLabel}.',
+          type: NotificationType.system,
+          userId: r.userId,
+        );
+      } else {
+        await svc.reject(r.id, widget.adminId);
+        await msg.notifyRole(
+          title: 'Access request declined',
+          body: 'Your request for ${r.moduleLabel} · ${r.permLabel} '
+              'was declined.',
+          type: NotificationType.system,
+          userId: r.userId,
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.req;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          InitialAvatar(name: r.userName, size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.userName,
+                    style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.heading)),
+                Text('wants ${r.moduleLabel} · ${r.permLabel}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textMuted)),
+              ],
+            ),
+          ),
+          if (_busy)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else ...[
+            IconButton(
+              tooltip: 'Approve (grant)',
+              icon: const Icon(Icons.check_circle,
+                  color: AppColors.success),
+              onPressed: () => _decide(true),
+            ),
+            IconButton(
+              tooltip: 'Decline',
+              icon: const Icon(Icons.cancel, color: AppColors.error),
+              onPressed: () => _decide(false),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

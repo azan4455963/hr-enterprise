@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/access_request_model.dart';
 import '../models/attendance_model.dart';
 import '../models/attendance_qr_session_model.dart';
 import '../models/audit_log_model.dart';
@@ -29,6 +30,18 @@ final departmentsProvider = StreamProvider<List<DepartmentModel>>((ref) {
 /// All users (for admin to pick directors).
 final usersProvider = StreamProvider<List<UserModel>>((ref) {
   return ref.watch(userRepositoryProvider).watchAll();
+});
+
+/// Pending feature-access requests (admin view).
+final pendingAccessRequestsProvider =
+    StreamProvider<List<AccessRequestModel>>((ref) {
+  return ref.watch(accessRequestServiceProvider).watchPending();
+});
+
+/// One user's own feature-access requests (any status).
+final myAccessRequestsProvider =
+    StreamProvider.family<List<AccessRequestModel>, String>((ref, userId) {
+  return ref.watch(accessRequestServiceProvider).watchForUser(userId);
 });
 
 final employeesProvider = StreamProvider<List<EmployeeModel>>((ref) {

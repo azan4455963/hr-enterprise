@@ -211,5 +211,16 @@ service cloud.firestore {
       allow read: if isSignedIn() && hasPerm('assets_manage');
       allow write: if isSignedIn() && hasPerm('assets_manage');
     }
+
+    // Feature-access requests: a user creates their own (pending); only an
+    // admin can decide them. Users read their own; admins read all.
+    match /access_requests/{id} {
+      allow read: if isSignedIn() &&
+        (resource.data.userId == request.auth.uid || isAdminRole());
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow update, delete: if isAdminRole();
+    }
   }
 }

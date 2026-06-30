@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../repositories/attendance_repository.dart';
 import '../repositories/employee_repository.dart';
 import '../repositories/user_repository.dart';
+import '../services/access_request_service.dart';
 import '../services/attendance_qr_service.dart';
 import '../services/attendance_service.dart';
 import '../services/audit_service.dart';
@@ -92,6 +93,10 @@ final biometricServiceProvider =
 final departmentServiceProvider = Provider<DepartmentService>((ref) {
   return DepartmentService(userRepository: ref.watch(userRepositoryProvider));
 });
+final accessRequestServiceProvider = Provider<AccessRequestService>((ref) {
+  return AccessRequestService(users: ref.watch(userRepositoryProvider));
+});
+
 final userAdminServiceProvider = Provider<UserAdminService>((ref) {
   return UserAdminService(userRepository: ref.watch(userRepositoryProvider));
 });
