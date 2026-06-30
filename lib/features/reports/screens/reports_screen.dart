@@ -1,13 +1,12 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
-import '../../../core/utils/file_saver.dart';
-import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/export_menu.dart';
 import '../../../core/widgets/permission_gate.dart';
+import '../../../core/widgets/ui_kit.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/service_providers.dart';
@@ -37,20 +36,90 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     }
   }
 
-  Future<void> _shareExcel(Uint8List bytes, String filename) async {
-    await saveBytes(
-      bytes,
-      filename,
-      mimeType:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isWide = ResponsiveBreakpoints.of(context).largerThan(TABLET);
     final user = ref.watch(currentUserProvider).valueOrNull;
     final canViewSalary =
         user != null && ref.watch(rbacServiceProvider).canViewSalary(user);
+
+    final cards = <Widget>[
+      _ReportCard(
+        title: 'Attendance',
+        subtitle: 'Daily logs, last 30 days.',
+        icon: Icons.access_time_rounded,
+        accent: AppColors.brandBlue,
+        accentBg: AppColors.brandBlueSoft,
+        onPdf: () => _runExport(() async {
+          final data = await ref
+              .read(attendanceServiceProvider)
+              .fetchForExport(days: 30);
+          await ref.read(exportServiceProvider).shareAttendancePdf(data);
+        }),
+        onExcel: () => _runExport(() async {
+          final data = await ref
+              .read(attendanceServiceProvider)
+              .fetchForExport(days: 30);
+          final bytes =
+              await ref.read(exportServiceProvider).buildAttendanceExcel(data);
+          await saveXlsxBytes(bytes, 'attendance.xlsx');
+        }),
+      ),
+      _ReportCard(
+        title: 'Employees',
+        subtitle: 'Full staff directory.',
+        icon: Icons.groups_rounded,
+        accent: AppColors.pillBlueFg,
+        accentBg: AppColors.pillBlueBg,
+        onPdf: () => _runExport(() async {
+          final data = await ref.read(employeesProvider.future);
+          await ref
+              .read(exportServiceProvider)
+              .shareEmployeesPdf(data, includeSalary: canViewSalary);
+        }),
+        onExcel: () => _runExport(() async {
+          final data = await ref.read(employeesProvider.future);
+          final bytes = await ref
+              .read(exportServiceProvider)
+              .buildEmployeesExcel(data, includeSalary: canViewSalary);
+          await saveXlsxBytes(bytes, 'employees.xlsx');
+        }),
+      ),
+      _ReportCard(
+        title: 'Payroll',
+        subtitle: 'Salary records & status.',
+        icon: Icons.payments_rounded,
+        accent: AppColors.pillGreenFg,
+        accentBg: AppColors.pillGreenBg,
+        onPdf: () => _runExport(() async {
+          final data = await ref.read(payrollProvider.future);
+          await ref.read(exportServiceProvider).sharePayrollPdf(data);
+        }),
+        onExcel: () => _runExport(() async {
+          final data = await ref.read(payrollProvider.future);
+          final bytes =
+              await ref.read(exportServiceProvider).buildPayrollExcel(data);
+          await saveXlsxBytes(bytes, 'payroll.xlsx');
+        }),
+      ),
+      _ReportCard(
+        title: 'Leave',
+        subtitle: 'Requests & balances.',
+        icon: Icons.beach_access_rounded,
+        accent: AppColors.pillAmberFg,
+        accentBg: AppColors.pillAmberBg,
+        onPdf: () => _runExport(() async {
+          final data = await ref.read(leaveRequestsProvider.future);
+          await ref.read(exportServiceProvider).shareLeavePdf(data);
+        }),
+        onExcel: () => _runExport(() async {
+          final data = await ref.read(leaveRequestsProvider.future);
+          final bytes =
+              await ref.read(exportServiceProvider).buildLeaveExcel(data);
+          await saveXlsxBytes(bytes, 'leave.xlsx');
+        }),
+      ),
+    ];
 
     return PermissionGate(
       permission: 'reports_view',
@@ -60,104 +129,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       child: Scaffold(
         body: Stack(
           children: [
-            Padding(
-              padding: const EdgeInsets.all(24),
+            SingleChildScrollView(
+              padding: EdgeInsets.all(isWide ? 28 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Reports & Export',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                  const PageHeading(
+                    title: 'Reports & Export',
+                    subtitle:
+                        'Download attendance, employees, payroll and leave data.',
                   ),
-                  const SizedBox(height: 24),
-                  Expanded(
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 1.4,
-                      children: [
-                        _ReportCard(
-                          title: 'Attendance',
-                          icon: Icons.access_time,
-                          onPdf: () => _runExport(() async {
-                            final data = await ref
-                                .read(attendanceServiceProvider)
-                                .fetchForExport(days: 30);
-                            await ref
-                                .read(exportServiceProvider)
-                                .shareAttendancePdf(data);
-                          }),
-                          onExcel: () => _runExport(() async {
-                            final data = await ref
-                                .read(attendanceServiceProvider)
-                                .fetchForExport(days: 30);
-                            final bytes = await ref
-                                .read(exportServiceProvider)
-                                .buildAttendanceExcel(data);
-                            await _shareExcel(bytes, 'attendance.xlsx');
-                          }),
-                        ),
-                        _ReportCard(
-                          title: 'Employees',
-                          icon: Icons.people,
-                          onPdf: () => _runExport(() async {
-                            final data =
-                                await ref.read(employeesProvider.future);
-                            await ref.read(exportServiceProvider).shareEmployeesPdf(
-                                  data,
-                                  includeSalary: canViewSalary,
-                                );
-                          }),
-                          onExcel: () => _runExport(() async {
-                            final data =
-                                await ref.read(employeesProvider.future);
-                            final bytes = await ref
-                                .read(exportServiceProvider)
-                                .buildEmployeesExcel(
-                                  data,
-                                  includeSalary: canViewSalary,
-                                );
-                            await _shareExcel(bytes, 'employees.xlsx');
-                          }),
-                        ),
-                        _ReportCard(
-                          title: 'Payroll',
-                          icon: Icons.payments,
-                          onPdf: () => _runExport(() async {
-                            final data =
-                                await ref.read(payrollProvider.future);
-                            await ref
-                                .read(exportServiceProvider)
-                                .sharePayrollPdf(data);
-                          }),
-                          onExcel: () => _runExport(() async {
-                            final data =
-                                await ref.read(payrollProvider.future);
-                            final bytes = await ref
-                                .read(exportServiceProvider)
-                                .buildPayrollExcel(data);
-                            await _shareExcel(bytes, 'payroll.xlsx');
-                          }),
-                        ),
-                        _ReportCard(
-                          title: 'Leave',
-                          icon: Icons.beach_access,
-                          onPdf: null,
-                          onExcel: () => _runExport(() async {
-                            final data =
-                                await ref.read(leaveRequestsProvider.future);
-                            final bytes = await ref
-                                .read(exportServiceProvider)
-                                .buildLeaveExcel(data);
-                            await _shareExcel(bytes, 'leave.xlsx');
-                          }),
-                        ),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 22),
+                  _Grid(isWide: isWide, cards: cards),
                 ],
               ),
             ),
@@ -173,48 +156,158 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 }
 
+/// Lays the report cards out 2-up on wide screens, stacked on narrow.
+class _Grid extends StatelessWidget {
+  const _Grid({required this.isWide, required this.cards});
+
+  final bool isWide;
+  final List<Widget> cards;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isWide) {
+      return Column(
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(height: 14),
+            cards[i],
+          ],
+        ],
+      );
+    }
+    final rows = <Widget>[];
+    for (var i = 0; i < cards.length; i += 2) {
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: cards[i]),
+          const SizedBox(width: 16),
+          if (i + 1 < cards.length)
+            Expanded(child: cards[i + 1])
+          else
+            const Expanded(child: SizedBox.shrink()),
+        ],
+      ));
+      if (i + 2 < cards.length) rows.add(const SizedBox(height: 16));
+    }
+    return Column(children: rows);
+  }
+}
+
 class _ReportCard extends StatelessWidget {
   const _ReportCard({
     required this.title,
+    required this.subtitle,
     required this.icon,
+    required this.accent,
+    required this.accentBg,
     required this.onExcel,
     this.onPdf,
   });
 
   final String title;
+  final String subtitle;
   final IconData icon;
+  final Color accent;
+  final Color accentBg;
   final VoidCallback? onPdf;
   final VoidCallback onExcel;
 
   @override
   Widget build(BuildContext context) {
-    return GlassCard(
+    return AppCard(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 40, color: AppColors.primary),
-          const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          if (onPdf != null)
-            PermissionGate(
-              permission: 'reports_export',
-              child: OutlinedButton.icon(
-                onPressed: onPdf,
-                icon: const Icon(Icons.picture_as_pdf, size: 18),
-                label: const Text('PDF'),
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: accentBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 24, color: accent),
               ),
-            ),
-          const SizedBox(height: 8),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.heading)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 12.5, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
           PermissionGate(
             permission: 'reports_export',
-            child: OutlinedButton.icon(
-              onPressed: onExcel,
-              icon: const Icon(Icons.table_chart, size: 18),
-              label: const Text('Excel'),
+            child: Row(
+              children: [
+                if (onPdf != null) ...[
+                  Expanded(
+                    child: _ExportBtn(
+                      label: 'PDF',
+                      icon: Icons.picture_as_pdf_outlined,
+                      color: AppColors.pillRedFg,
+                      onTap: onPdf!,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  child: _ExportBtn(
+                    label: 'Excel',
+                    icon: Icons.table_chart_outlined,
+                    color: AppColors.pillGreenFg,
+                    onTap: onExcel,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ExportBtn extends StatelessWidget {
+  const _ExportBtn({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withValues(alpha: 0.4)),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
