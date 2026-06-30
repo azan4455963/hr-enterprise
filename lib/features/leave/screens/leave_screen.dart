@@ -83,8 +83,20 @@ class LeaveScreen extends ConsumerWidget {
         ? ref.watch(employeeLeaveBalancesProvider(empId))
         : const <LeaveBalance>[];
 
-    final totalAllowance = balances.fold<int>(0, (s, b) => s + b.allowance);
-    final totalUsed = balances.fold<int>(0, (s, b) => s + b.used);
+    // Cards always show. Use the signed-in user's own balance when they're
+    // linked to an employee; otherwise fall back to the company's configured
+    // allowance total (0 taken) so the page never looks empty.
+    final int totalAllowance;
+    final int totalUsed;
+    if (balances.isNotEmpty) {
+      totalAllowance = balances.fold<int>(0, (s, b) => s + b.allowance);
+      totalUsed = balances.fold<int>(0, (s, b) => s + b.used);
+    } else {
+      final settings = ref.watch(companySettingsProvider).valueOrNull;
+      totalAllowance =
+          settings?.leaveAllowances.values.fold<int>(0, (s, v) => s + v) ?? 0;
+      totalUsed = 0;
+    }
     final remaining = totalAllowance - totalUsed;
 
     return Scaffold(
@@ -143,15 +155,13 @@ class LeaveScreen extends ConsumerWidget {
             const SizedBox(height: 22),
 
             // ── My leave balance ──────────────────────────────────────────
-            if (balances.isNotEmpty) ...[
-              _BalanceCards(
-                isWide: isWide,
-                allowance: totalAllowance,
-                used: totalUsed,
-                remaining: remaining,
-              ),
-              const SizedBox(height: 24),
-            ],
+            _BalanceCards(
+              isWide: isWide,
+              allowance: totalAllowance,
+              used: totalUsed,
+              remaining: remaining,
+            ),
+            const SizedBox(height: 24),
 
             // ── Recent requests ───────────────────────────────────────────
             const SectionTitle(
