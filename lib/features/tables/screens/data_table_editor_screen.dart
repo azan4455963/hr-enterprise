@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:pluto_grid_plus/pluto_grid_plus.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/export_menu.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/data_table_model.dart';
 import '../../../providers/auth_provider.dart';
@@ -284,6 +285,11 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
               label: 'Export PDF',
               icon: Icons.picture_as_pdf_outlined,
               onPressed: _columns.isEmpty ? () {} : _exportPdf,
+            ),
+            GhostButton(
+              label: 'Export Excel',
+              icon: Icons.table_chart_outlined,
+              onPressed: _columns.isEmpty ? () {} : _exportExcel,
             ),
             GhostButton(
               label: 'Copy CSV',
@@ -1450,6 +1456,30 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
       await ref
           .read(exportServiceProvider)
           .shareTablePdf(title: _tableName, columns: _columns, rows: _rows);
+    } catch (e) {
+      _snack('Export failed: $e');
+    }
+  }
+
+  /// Export the active tab as its own .xlsx file.
+  Future<void> _exportExcel() async {
+    _syncFromGrid();
+    try {
+      final sheetName = (_active >= 0 && _active < _sheets.length)
+          ? _sheets[_active].name
+          : 'Sheet1';
+      final bytes = await ref.read(exportServiceProvider).buildSheetExcel(
+            sheetName: sheetName,
+            columns: _columns,
+            rows: _rows,
+          );
+      String safe(String s) {
+        final v = s.trim().replaceAll(RegExp(r'[^A-Za-z0-9 _-]'), '_').trim();
+        return v.isEmpty ? 'table' : v;
+      }
+
+      await saveXlsxBytes(bytes, '${safe(_tableName)}_${safe(sheetName)}.xlsx');
+      _snack('Exported "$sheetName" to Excel.');
     } catch (e) {
       _snack('Export failed: $e');
     }

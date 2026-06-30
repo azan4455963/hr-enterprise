@@ -987,6 +987,31 @@ class ExportService {
     return Uint8List.fromList(excel.encode()!);
   }
 
+  /// Build a one-sheet .xlsx from a single tab's columns + rows — used by the
+  /// in-editor "Export Excel" so each tab can be downloaded on its own.
+  Future<Uint8List> buildSheetExcel({
+    required String sheetName,
+    required List<String> columns,
+    required List<List<String>> rows,
+  }) async {
+    final excel = Excel.createExcel();
+    var name = sheetName.replaceAll(RegExp(r'[\[\]\*\?:\\/]'), ' ').trim();
+    if (name.isEmpty) name = 'Sheet1';
+    if (name.length > 31) name = name.substring(0, 31);
+    final ws = excel[name];
+    if (columns.isNotEmpty) {
+      ws.appendRow([for (final c in columns) TextCellValue(c)]);
+    }
+    for (final row in rows) {
+      ws.appendRow([for (final cell in row) TextCellValue(cell)]);
+    }
+    final def = excel.getDefaultSheet();
+    if (def != null && def.toLowerCase() != name.toLowerCase()) {
+      excel.delete(def);
+    }
+    return Uint8List.fromList(excel.encode()!);
+  }
+
   /// One employee's whole record as an .xlsx workbook: Summary + Attendance +
   /// Salary + Leave sheets. Attendance comes from the custom tables (passed in
   /// as plain rows). Used by the Employee Record (360) screen.
