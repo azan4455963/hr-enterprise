@@ -7,6 +7,8 @@ import 'package:responsive_framework/responsive_framework.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/error_state.dart';
+import '../../../core/widgets/export_menu.dart';
+import '../../../core/widgets/permission_gate.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/attendance_model.dart';
 import '../../../models/leave_model.dart';
@@ -50,12 +52,41 @@ class AttendanceScreen extends ConsumerWidget {
                         'Monitor daily logs and manage employee leave requests.',
                   ),
                 ),
-                if (canManage)
-                  PrimaryButton(
-                    label: 'Generate Check-in QR',
-                    icon: Icons.qr_code_2,
-                    onPressed: () => context.go('/attendance/qr-display'),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    PermissionGate(
+                      permission: 'reports_export',
+                      child: ExportMenuButton(
+                        onExportPdf: () async {
+                          final data = await ref
+                              .read(attendanceServiceProvider)
+                              .fetchForExport(days: 30);
+                          await ref
+                              .read(exportServiceProvider)
+                              .shareAttendancePdf(data);
+                        },
+                        onExportExcel: () async {
+                          final data = await ref
+                              .read(attendanceServiceProvider)
+                              .fetchForExport(days: 30);
+                          final bytes = await ref
+                              .read(exportServiceProvider)
+                              .buildAttendanceExcel(data);
+                          await saveXlsxBytes(bytes, 'attendance.xlsx');
+                        },
+                      ),
+                    ),
+                    if (canManage)
+                      PrimaryButton(
+                        label: 'Generate Check-in QR',
+                        icon: Icons.qr_code_2,
+                        onPressed: () => context.go('/attendance/qr-display'),
+                      ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 22),

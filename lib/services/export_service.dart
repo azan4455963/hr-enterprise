@@ -823,6 +823,45 @@ class ExportService {
     );
   }
 
+  Future<void> shareLeavePdf(List<LeaveRequestModel> records) async {
+    final doc = pw.Document();
+    doc.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(level: 0, child: pw.Text('Leave Report')),
+          pw.TableHelper.fromTextArray(
+            headers: [
+              'Employee',
+              'Type',
+              'Start',
+              'End',
+              'Days',
+              'Status',
+              'Reason',
+            ],
+            data: records
+                .map(
+                  (r) => [
+                    r.employeeName,
+                    r.leaveType.name,
+                    _dateFormat.format(r.startDate),
+                    _dateFormat.format(r.endDate),
+                    '${r.days}',
+                    r.status.name,
+                    r.reason ?? '',
+                  ],
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'leave_report.pdf',
+    );
+  }
+
   Future<Uint8List> buildAttendanceExcel(List<AttendanceModel> records) async {
     final excel = Excel.createExcel();
     final sheet = excel['Attendance'];

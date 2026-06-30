@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/async_value_widget.dart';
+import '../../../core/widgets/export_menu.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../models/leave_model.dart';
@@ -51,13 +52,40 @@ class LeaveScreen extends ConsumerWidget {
                       ),
                 ),
                 const Spacer(),
-                PermissionGate(
-                  permission: 'leave_create',
-                  child: ElevatedButton.icon(
-                    onPressed: () => _showRequestDialog(context, ref),
-                    icon: const Icon(Icons.add),
-                    label: const Text('Request Leave'),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    PermissionGate(
+                      permission: 'reports_export',
+                      child: ExportMenuButton(
+                        onExportPdf: () async {
+                          final data =
+                              await ref.read(leaveRequestsProvider.future);
+                          await ref
+                              .read(exportServiceProvider)
+                              .shareLeavePdf(data);
+                        },
+                        onExportExcel: () async {
+                          final data =
+                              await ref.read(leaveRequestsProvider.future);
+                          final bytes = await ref
+                              .read(exportServiceProvider)
+                              .buildLeaveExcel(data);
+                          await saveXlsxBytes(bytes, 'leave.xlsx');
+                        },
+                      ),
+                    ),
+                    PermissionGate(
+                      permission: 'leave_create',
+                      child: ElevatedButton.icon(
+                        onPressed: () => _showRequestDialog(context, ref),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Request Leave'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

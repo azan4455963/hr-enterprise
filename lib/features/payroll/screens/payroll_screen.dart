@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/widgets/async_value_widget.dart';
+import '../../../core/widgets/export_menu.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../models/employee_model.dart';
@@ -64,6 +65,7 @@ class PayrollScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Payroll',
@@ -72,30 +74,57 @@ class PayrollScreen extends ConsumerWidget {
                         ),
                   ),
                   const Spacer(),
-                  PermissionGate(
-                    permission: 'payroll_edit',
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => _slipsFromSheet(context, ref),
-                          icon: const Icon(Icons.receipt_long_outlined,
-                              size: 18),
-                          label: const Text('Slips from sheet'),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      PermissionGate(
+                        permission: 'reports_export',
+                        child: ExportMenuButton(
+                          onExportPdf: () async {
+                            final data =
+                                await ref.read(payrollProvider.future);
+                            await ref
+                                .read(exportServiceProvider)
+                                .sharePayrollPdf(data);
+                          },
+                          onExportExcel: () async {
+                            final data =
+                                await ref.read(payrollProvider.future);
+                            final bytes = await ref
+                                .read(exportServiceProvider)
+                                .buildPayrollExcel(data);
+                            await saveXlsxBytes(bytes, 'payroll.xlsx');
+                          },
                         ),
-                        OutlinedButton.icon(
-                          onPressed: () => _generateMonth(context, ref),
-                          icon: const Icon(Icons.bolt_outlined, size: 18),
-                          label: const Text('Generate month'),
+                      ),
+                      PermissionGate(
+                        permission: 'payroll_edit',
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _slipsFromSheet(context, ref),
+                              icon: const Icon(Icons.receipt_long_outlined,
+                                  size: 18),
+                              label: const Text('Slips from sheet'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: () => _generateMonth(context, ref),
+                              icon: const Icon(Icons.bolt_outlined, size: 18),
+                              label: const Text('Generate month'),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => _showPayrollDialog(context, ref),
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Record'),
+                            ),
+                          ],
                         ),
-                        ElevatedButton.icon(
-                          onPressed: () => _showPayrollDialog(context, ref),
-                          icon: const Icon(Icons.add),
-                          label: const Text('Add Record'),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ],
               ),

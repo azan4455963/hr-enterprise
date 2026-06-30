@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/export_menu.dart';
+import '../../../core/widgets/permission_gate.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../providers/data_providers.dart';
+import '../../../providers/service_providers.dart';
 import 'employee_record_screen.dart';
 import 'employee_search_screen.dart';
 import 'employees_screen.dart';
@@ -35,10 +41,21 @@ class _EmployeesHubScreenState extends State<EmployeesHubScreen> {
           width: double.infinity,
           color: AppColors.canvas,
           padding: EdgeInsets.fromLTRB(isWide ? 28 : 16, 16, 16, 10),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [for (var i = 0; i < _labels.length; i++) _pill(i)],
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < _labels.length; i++) _pill(i)
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const _EmployeesExportButton(),
+            ],
           ),
         ),
         Expanded(
@@ -86,6 +103,38 @@ class _EmployeesHubScreenState extends State<EmployeesHubScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Export the full employee list (PDF / Excel) straight from the hub header —
+/// mirrors the Reports page "Employees" card. Salary is included only when the
+/// signed-in user is allowed to see it.
+class _EmployeesExportButton extends ConsumerWidget {
+  const _EmployeesExportButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final canViewSalary =
+        user != null && ref.watch(rbacServiceProvider).canViewSalary(user);
+    return PermissionGate(
+      permission: 'reports_export',
+      child: ExportMenuButton(
+        onExportPdf: () async {
+          final data = await ref.read(employeesProvider.future);
+          await ref
+              .read(exportServiceProvider)
+              .shareEmployeesPdf(data, includeSalary: canViewSalary);
+        },
+        onExportExcel: () async {
+          final data = await ref.read(employeesProvider.future);
+          final bytes = await ref
+              .read(exportServiceProvider)
+              .buildEmployeesExcel(data, includeSalary: canViewSalary);
+          await saveXlsxBytes(bytes, 'employees.xlsx');
+        },
       ),
     );
   }
