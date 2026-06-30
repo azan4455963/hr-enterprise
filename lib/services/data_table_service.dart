@@ -39,7 +39,24 @@ class DataTableService {
   CollectionReference<Map<String, dynamic>> get _ref =>
       _firestore.collection('data_tables');
 
-  Stream<List<DataTableModel>> watchTables() {
+  /// All tables (admin). When [departmentNames] is given (a director), only
+  /// tables tagged to one of those departments are returned (sorted client-side
+  /// to avoid a composite index).
+  Stream<List<DataTableModel>> watchTables({List<String>? departmentNames}) {
+    if (departmentNames != null) {
+      if (departmentNames.isEmpty) {
+        return Stream.value(const <DataTableModel>[]);
+      }
+      final scoped = departmentNames.take(30).toList();
+      return _ref
+          .where('departmentName', whereIn: scoped)
+          .snapshots()
+          .map((snap) => snap.docs
+              .map((d) => DataTableModel.fromMap(d.data(), d.id))
+              .toList()
+            ..sort((a, b) => (b.createdAt ?? DateTime(0))
+                .compareTo(a.createdAt ?? DateTime(0))));
+    }
     return _ref.orderBy('createdAt', descending: true).snapshots().map(
           (snap) => snap.docs
               .map((d) => DataTableModel.fromMap(d.data(), d.id))
@@ -56,6 +73,7 @@ class DataTableService {
   Future<String> create({
     required String name,
     required String userId,
+    String? departmentName,
     List<String> columns = const ['Column 1'],
   }) async {
     final sheet = DataSheet(name: 'Sheet 1', columns: columns, rows: const []);
@@ -63,6 +81,7 @@ class DataTableService {
       'name': name.trim(),
       'sheets': [sheet.toMap()],
       'createdBy': userId,
+      'departmentName': ?departmentName,
       'createdAt': DateTime.now(),
       'updatedAt': DateTime.now(),
     });
@@ -83,6 +102,7 @@ class DataTableService {
     required String name,
     required int year,
     required String userId,
+    String? departmentName,
   }) async {
     final dateFmt = DateFormat('dd-MMM-yyyy');
     final dayFmt = DateFormat('EEEE');
@@ -104,6 +124,7 @@ class DataTableService {
       'name': name.trim(),
       'sheets': sheets,
       'createdBy': userId,
+      'departmentName': ?departmentName,
       'createdAt': DateTime.now(),
       'updatedAt': DateTime.now(),
     });
@@ -123,6 +144,7 @@ class DataTableService {
     required String name,
     required List<DataSheet> sheets,
     required String userId,
+    String? departmentName,
   }) async {
     final safeSheets = sheets.isEmpty
         ? [const DataSheet(name: 'Sheet 1', columns: ['Column 1'], rows: [])]
@@ -131,6 +153,7 @@ class DataTableService {
       'name': name.trim().isEmpty ? 'Imported table' : name.trim(),
       'sheets': [for (final s in safeSheets) s.toMap()],
       'createdBy': userId,
+      'departmentName': ?departmentName,
       'createdAt': DateTime.now(),
       'updatedAt': DateTime.now(),
     });
@@ -150,6 +173,7 @@ class DataTableService {
     required String name,
     required int year,
     required String userId,
+    String? departmentName,
   }) async {
     final sheets = <Map<String, dynamic>>[];
     for (var m = 1; m <= 12; m++) {
@@ -164,6 +188,7 @@ class DataTableService {
       'name': name.trim(),
       'sheets': sheets,
       'createdBy': userId,
+      'departmentName': ?departmentName,
       'createdAt': DateTime.now(),
       'updatedAt': DateTime.now(),
     });

@@ -1,15 +1,23 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/permissions.dart';
 import '../models/data_table_model.dart';
 import '../services/data_table_service.dart';
+import 'auth_provider.dart';
 
 final dataTableServiceProvider = Provider<DataTableService>((ref) {
   return DataTableService();
 });
 
-/// All custom tables (newest first).
+/// Custom tables (newest first). A director only sees tables tagged to a
+/// department they manage; admins see all.
 final dataTablesProvider = StreamProvider<List<DataTableModel>>((ref) {
-  return ref.watch(dataTableServiceProvider).watchTables();
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  final service = ref.watch(dataTableServiceProvider);
+  if (user != null && user.role == RolePermissions.manager) {
+    return service.watchTables(departmentNames: user.departments);
+  }
+  return service.watchTables();
 });
 
 /// A single table, live.

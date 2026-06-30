@@ -50,6 +50,13 @@ class RouterRefreshNotifier extends ChangeNotifier {
         if (user.role == RolePermissions.employee && path == '/dashboard') {
           return '/me';
         }
+        // A director's home is the department-scoped "My Department" — unless an
+        // admin granted them the overall dashboard.
+        if (user.role == RolePermissions.manager &&
+            path == '/dashboard' &&
+            !user.hasPermission('dashboard_view')) {
+          return '/my-department';
+        }
         final requiredPerm = RoutePermissions.permissionForPath(path);
         if (requiredPerm != null && !user.hasPermission(requiredPerm)) {
           return '/unauthorized';

@@ -5,12 +5,14 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
+import '../../../core/constants/permissions.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/excel_import.dart';
 import '../../../core/utils/file_saver.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/data_table_model.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/data_providers.dart';
 import '../../../providers/data_table_providers.dart';
 import '../../../providers/service_providers.dart';
 
@@ -138,35 +140,121 @@ class DataTablesScreen extends ConsumerWidget {
     if (type == null) return;
     if (!context.mounted) return;
 
-    if (type == 'attendance') {
-      final name = await _nameDialog(context,
-          title: 'New Attendance Workbook',
-          hint: 'Department name — e.g. IT, Billing');
-      if (name == null || name.trim().isEmpty) return;
-      final id = await ref.read(dataTableServiceProvider).createAttendanceWorkbook(
-            name: name.trim(),
-            year: DateTime.now().year,
-            userId: userId,
-          );
-      if (context.mounted) context.go('/tables/$id');
-    } else if (type == 'salary') {
-      final name = await _nameDialog(context,
-          title: 'New Salary Workbook', hint: 'e.g. 2026 Salaries');
-      if (name == null || name.trim().isEmpty) return;
-      final id = await ref.read(dataTableServiceProvider).createSalaryWorkbook(
-            name: name.trim(),
-            year: DateTime.now().year,
-            userId: userId,
-          );
-      if (context.mounted) context.go('/tables/$id');
-    } else {
-      final name = await _nameDialog(context, title: 'New Table');
-      if (name == null || name.trim().isEmpty) return;
-      final id = await ref
-          .read(dataTableServiceProvider)
-          .create(name: name.trim(), userId: userId);
-      if (context.mounted) context.go('/tables/$id');
+    final user = ref.read(currentUserProvider).valueOrNull;
+    final isDirector = user?.role == RolePermissions.manager;
+    final deptOptions = isDirector
+        ? (user?.departments ?? const <String>[])
+        : <String>[
+            for (final d in (ref.read(departmentsProvider).valueOrNull ??
+                const []))
+              d.name as String
+          ];
+    if (isDirector && deptOptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No department assigned to you — ask an admin.')));
+      return;
     }
+
+    final (title, hint) = switch (type) {
+      'attendance' => ('New Attendance Workbook', 'e.g. June 2026 Attendance'),
+      'salary' => ('New Salary Workbook', 'e.g. 2026 Salaries'),
+      _ => ('New Table', 'e.g. June 2026 records'),
+    };
+    final res = await _collectNameDept(context,
+        title: title,
+        hint: hint,
+        isDirector: isDirector,
+        deptOptions: deptOptions);
+    if (res == null || res.name.trim().isEmpty) return;
+    if (!context.mounted) return;
+    final name = res.name.trim();
+    final dept = res.department;
+
+    final String id;
+    if (type == 'attendance') {
+      id = await ref.read(dataTableServiceProvider).createAttendanceWorkbook(
+            name: name,
+            year: DateTime.now().year,
+            userId: userId,
+            departmentName: dept,
+          );
+    } else if (type == 'salary') {
+      id = await ref.read(dataTableServiceProvider).createSalaryWorkbook(
+            name: name,
+            year: DateTime.now().year,
+            userId: userId,
+            departmentName: dept,
+          );
+    } else {
+      id = await ref
+          .read(dataTableServiceProvider)
+          .create(name: name, userId: userId, departmentName: dept);
+    }
+    if (context.mounted) context.go('/tables/$id');
+  }
+
+  /// Collect a table name + a department. A director must pick one of their
+  /// managed departments; an admin may leave it company-wide.
+  Future<({String name, String? department})?> _collectNameDept(
+    BuildContext context, {
+    required String title,
+    required String hint,
+    required bool isDirector,
+    required List<String> deptOptions,
+  }) {
+    final nameCtrl = TextEditingController();
+    String? dept = isDirector && deptOptions.isNotEmpty ? deptOptions.first : null;
+    return showDialog<({String name, String? department})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title:
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                decoration:
+                    InputDecoration(labelText: 'Table name', hintText: hint),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String?>(
+                initialValue: dept,
+                isExpanded: true,
+                decoration: InputDecoration(
+                    labelText: isDirector ? 'Department *' : 'Department'),
+                items: [
+                  if (!isDirector)
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Company-wide (admin only)')),
+                  for (final d in deptOptions)
+                    DropdownMenuItem<String?>(value: d, child: Text(d)),
+                ],
+                onChanged: (v) => setLocal(() => dept = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            PrimaryButton(
+              label: 'Create',
+              onPressed: () {
+                if (nameCtrl.text.trim().isEmpty) return;
+                if (isDirector && (dept == null || dept!.isEmpty)) return;
+                Navigator.pop(
+                    ctx, (name: nameCtrl.text.trim(), department: dept));
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _rename(BuildContext context, WidgetRef ref, DataTableModel t,
@@ -182,6 +270,17 @@ class DataTablesScreen extends ConsumerWidget {
   Future<void> _importExcel(
       BuildContext context, WidgetRef ref, String userId) async {
     final messenger = ScaffoldMessenger.of(context);
+    // Directors import into their own department; admins import company-wide.
+    final user = ref.read(currentUserProvider).valueOrNull;
+    final isDirector = user?.role == RolePermissions.manager;
+    final dept = isDirector
+        ? (user!.departments.isNotEmpty ? user.departments.first : null)
+        : null;
+    if (isDirector && dept == null) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('No department assigned to you — ask an admin.')));
+      return;
+    }
     final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['xlsx'],
@@ -214,6 +313,7 @@ class DataTablesScreen extends ConsumerWidget {
           name: name,
           sheets: sheets,
           userId: userId,
+          departmentName: dept,
         );
     if (context.mounted) context.go('/tables/$id');
   }
@@ -340,6 +440,7 @@ class _TableCard extends StatelessWidget {
                             color: AppColors.heading)),
                     const SizedBox(height: 2),
                     Text(
+                      '${(table.departmentName?.isNotEmpty ?? false) ? "${table.departmentName} · " : ""}'
                       '${table.sheets.length > 1 ? "${table.sheets.length} tabs · " : ""}'
                       '${table.columns.length} columns · ${table.rows.length} rows'
                       '${table.updatedAt != null ? " · updated ${DateFormat('dd MMM').format(table.updatedAt!)}" : ""}',

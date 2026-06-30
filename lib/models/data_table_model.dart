@@ -52,6 +52,9 @@ class DataTableModel {
   final String name;
   final List<DataSheet> sheets;
   final String? createdBy;
+  /// Department this table belongs to. A director only sees tables tagged to a
+  /// department they manage; null means company-wide (admin-only).
+  final String? departmentName;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -60,6 +63,7 @@ class DataTableModel {
     required this.name,
     this.sheets = const [],
     this.createdBy,
+    this.departmentName,
     this.createdAt,
     this.updatedAt,
   });
@@ -95,6 +99,7 @@ class DataTableModel {
       name: map['name'] as String? ?? '',
       sheets: sheets,
       createdBy: map['createdBy'] as String?,
+      departmentName: map['departmentName'] as String?,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (map['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -104,6 +109,7 @@ class DataTableModel {
         'name': name,
         'sheets': [for (final s in sheets) s.toMap()],
         'createdBy': createdBy,
+        'departmentName': ?departmentName,
         'createdAt': createdAt ?? DateTime.now(),
         'updatedAt': DateTime.now(),
       };

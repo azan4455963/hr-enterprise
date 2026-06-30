@@ -99,9 +99,9 @@ class RolePermissions {
 
     // Department Director — scoped to their own department (enforced in code
     // + Firestore rules). Can run their department: hire, attendance, leave.
+    // No dashboard_view by default → their home is the department-scoped "My
+    // Department"; an admin can still grant dashboard_view for the overall view.
     manager: [
-      'dashboard_view',
-
       'employees_view',
 
       'employees_create',

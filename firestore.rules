@@ -202,9 +202,24 @@ service cloud.firestore {
       );
     }
 
+    // A director only touches tables tagged to a department they manage; an
+    // admin (or any non-manager grantee) sees all.
+    function tableInScope(data) {
+      return isAdminRole() ||
+        role() != 'manager' ||
+        (('departmentName' in data) &&
+          userDoc().managedDepartments.hasAny([data.departmentName]));
+    }
+
     match /data_tables/{id} {
-      allow read: if isSignedIn() && hasPerm('tables_manage');
-      allow write: if isSignedIn() && hasPerm('tables_manage');
+      allow read: if isSignedIn() && hasPerm('tables_manage') &&
+        tableInScope(resource.data);
+      allow create: if isSignedIn() && hasPerm('tables_manage') &&
+        tableInScope(request.resource.data);
+      allow update: if isSignedIn() && hasPerm('tables_manage') &&
+        tableInScope(resource.data) && tableInScope(request.resource.data);
+      allow delete: if isSignedIn() && hasPerm('tables_manage') &&
+        tableInScope(resource.data);
     }
 
     match /assets/{id} {
