@@ -38,6 +38,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     _NavItem('/employees', 'Employees', Icons.people_alt_rounded),
     _NavItem('/attendance', 'Attendance', Icons.event_available_rounded),
     _NavItem('/leave', 'Leave', Icons.beach_access_rounded, badgeKey: 'leave'),
+    _NavItem('/messages', 'Messages', Icons.chat_bubble_outline_rounded),
     _NavItem('/payroll', 'Payroll', Icons.account_balance_wallet_rounded),
     _NavItem(
       '/onboarding',
@@ -51,7 +52,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   ];
 
   /// Employee-only nav items (what employees can see)
-  static const _employeeOnlyPaths = ['/me', '/attendance', '/leave'];
+  static const _employeeOnlyPaths = ['/me', '/attendance', '/leave', '/messages'];
 
   @override
   Widget build(BuildContext context) {

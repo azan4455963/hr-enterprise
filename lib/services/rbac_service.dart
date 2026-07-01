@@ -62,6 +62,8 @@ class RbacService {
     // an admin can grant the page to a director or any user.
     'attendance': can(user, 'attendance_edit'),
     'leave': can(user, 'leave_view'),
+    // Everyone can chat (recipients are scoped by role in chatRecipientsProvider).
+    'messages': true,
     'payroll': can(user, 'payroll_view'),
     'reports': can(user, 'reports_view'),
     'reminders': can(user, 'employees_view'),

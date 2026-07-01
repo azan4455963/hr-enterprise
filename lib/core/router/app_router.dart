@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../features/attendance/screens/attendance_screen.dart';
 import '../../features/attendance/screens/qr_display_screen.dart';
 import '../../features/attendance/screens/qr_scan_screen.dart';
+import '../../features/chat/screens/chat_thread_screen.dart';
+import '../../features/chat/screens/messages_screen.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/register_screen.dart';
@@ -89,6 +91,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/my-info',
             builder: (context, state) => const MyInfoScreen(),
+          ),
+          GoRoute(
+            path: '/messages',
+            builder: (context, state) => const MessagesScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => ChatThreadScreen(
+                  conversationId: state.pathParameters['id']!,
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: '/employee-overview',

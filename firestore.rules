@@ -43,9 +43,9 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isSignedIn() && (
-        request.auth.uid == userId || isAdminRole()
-      );
+      // Any signed-in user can read the basic directory (needed so the chat
+      // recipient picker can find their admin / director). Writes stay locked.
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == userId;
       allow update: if isSignedIn() && (
         request.auth.uid == userId || isAdminRole()
@@ -236,6 +236,30 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'pending';
       allow update, delete: if isAdminRole();
+    }
+
+    // 1-to-1 chat. Participants read/write their own conversation; an admin can
+    // read every conversation (read-only monitor) but can only post in ones they
+    // are actually a participant of.
+    match /conversations/{cid} {
+      allow read: if isSignedIn() &&
+        (request.auth.uid in resource.data.participantIds || isAdminRole());
+      allow create: if isSignedIn() &&
+        (request.auth.uid in request.resource.data.participantIds);
+      allow update: if isSignedIn() &&
+        (request.auth.uid in resource.data.participantIds);
+
+      match /messages/{mid} {
+        allow read: if isSignedIn() && (
+          (request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(cid)).data.participantIds) ||
+          isAdminRole()
+        );
+        allow create: if isSignedIn() &&
+          request.resource.data.senderId == request.auth.uid &&
+          (request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(cid)).data.participantIds);
+      }
     }
   }
 }
