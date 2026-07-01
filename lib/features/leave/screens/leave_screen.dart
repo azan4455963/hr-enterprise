@@ -715,6 +715,28 @@ class _LeaveCard extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if ((leave.reason ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.notes_rounded,
+                            size: 13, color: AppColors.textFaint),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            leave.reason!.trim(),
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textBody,
+                                fontStyle: FontStyle.italic),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                   if (!isWide) ...[
                     const SizedBox(height: 6),
                     _dateRow(dateText, leave.days),
