@@ -200,6 +200,18 @@ final onboardingSubmissionsProvider =
   return ref.watch(onboardingServiceProvider).watchSubmissions();
 });
 
+/// Emails of people who submitted onboarding but aren't approved yet — used to
+/// flag their user account as "Onboarding pending" in Users & Roles.
+final pendingOnboardingEmailsProvider = Provider<Set<String>>((ref) {
+  final subs = ref.watch(onboardingSubmissionsProvider).valueOrNull ?? const [];
+  return {
+    for (final s in subs)
+      if (s.status == OnboardingSubmissionStatus.submitted &&
+          (s.email ?? '').isNotEmpty)
+        s.email!.toLowerCase(),
+  };
+});
+
 final notificationsProvider =
     StreamProvider<List<AppNotificationModel>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;

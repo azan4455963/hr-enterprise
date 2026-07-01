@@ -108,10 +108,16 @@ class OnboardingService {
     });
   }
 
+  /// Approve a submission → create the employee + link by email. Admin-only
+  /// fields ([salary], [position], [department]) are set by the reviewer at
+  /// approval time (the applicant never enters salary).
   Future<void> approveSubmission(
     OnboardingSubmissionModel submission,
-    String reviewedBy,
-  ) async {
+    String reviewedBy, {
+    double? salary,
+    String? position,
+    String? department,
+  }) async {
     final employee = EmployeeModel(
       id: '',
       firstName: submission.firstName ?? '',
@@ -121,8 +127,9 @@ class OnboardingService {
       cnic: submission.cnic,
       phone: submission.phone,
       address: submission.address,
-      departmentName: submission.department,
-      position: submission.position,
+      departmentName: department ?? submission.department,
+      position: position ?? submission.position,
+      salary: salary,
       profilePictureUrl: submission.profilePictureUrl,
       documentUrls: submission.documentUrls,
       status: EmployeeStatus.active,

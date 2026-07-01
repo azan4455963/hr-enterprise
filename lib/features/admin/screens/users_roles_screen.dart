@@ -113,6 +113,9 @@ class _UserCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pendingEmails = ref.watch(pendingOnboardingEmailsProvider);
+    final isPending = (user.employeeId == null || user.employeeId!.isEmpty) &&
+        pendingEmails.contains(user.email.toLowerCase());
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AppCard(
@@ -137,6 +140,10 @@ class _UserCard extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       _rolePill,
+                      if (isPending) ...[
+                        const SizedBox(width: 6),
+                        StatusPill.amber('Pending'),
+                      ],
                       if (!user.isActive) ...[
                         const SizedBox(width: 6),
                         StatusPill.red('Disabled'),
