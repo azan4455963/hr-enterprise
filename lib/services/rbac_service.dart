@@ -45,6 +45,8 @@ class RbacService {
     'dashboard':
         can(user, 'dashboard_view') && user.role != RolePermissions.employee,
     'me': user.role == RolePermissions.employee,
+    'my-attendance': user.role == RolePermissions.employee,
+    'my-salary': user.role == RolePermissions.employee,
     'employees': can(user, 'employees_view'),
     'employee-search': can(user, 'employees_view'),
     'employee-record': can(user, 'employees_view'),

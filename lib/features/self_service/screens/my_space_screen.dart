@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 
 import '../../../core/constants/permissions.dart';
@@ -40,8 +39,8 @@ class MySpaceScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const PageHeading(
-            title: 'My Space',
-            subtitle: 'Your profile, leave balance, attendance and salary.',
+            title: 'Dashboard',
+            subtitle: 'Your attendance and leave at a glance.',
           ),
           const SizedBox(height: 20),
           _ProfileHeader(
@@ -52,10 +51,8 @@ class MySpaceScreen extends ConsumerWidget {
           if (!linked)
             const _NotLinkedCard()
           else ...[
+            _MyAttendanceSection(employeeId: empId, compact: true),
             _LeaveBalanceSection(employeeId: empId),
-            _MyAttendanceSection(employeeId: empId),
-            _SalarySection(employeeId: empId),
-            _MyLeaveSection(employeeId: empId),
           ],
         ],
       ),
@@ -114,19 +111,6 @@ IconData _leaveTypeIcon(LeaveType t) {
       return Icons.money_off_rounded;
     default:
       return Icons.event_note_outlined;
-  }
-}
-
-StatusPill _leaveStatusPill(LeaveStatus s) {
-  switch (s) {
-    case LeaveStatus.approved:
-      return StatusPill.green('Approved');
-    case LeaveStatus.rejected:
-      return StatusPill.red('Rejected');
-    case LeaveStatus.cancelled:
-      return StatusPill.red('Cancelled');
-    case LeaveStatus.pending:
-      return StatusPill.amber('Pending');
   }
 }
 
@@ -472,8 +456,11 @@ class _MiniStat extends StatelessWidget {
 }
 
 class _MyAttendanceSection extends ConsumerWidget {
-  const _MyAttendanceSection({required this.employeeId});
+  const _MyAttendanceSection(
+      {required this.employeeId, this.showTitle = true, this.compact = false});
   final String employeeId;
+  final bool showTitle;
+  final bool compact; // dashboard view = KPIs only, no date list
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -488,7 +475,7 @@ class _MyAttendanceSection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(context, 'My Attendance'),
+              if (showTitle) _sectionTitle(context, 'My Attendance'),
               if (p == null)
                 const AppCard(
                   child: Text(
@@ -529,7 +516,7 @@ class _MyAttendanceSection extends ConsumerWidget {
                             color: AppColors.error)),
                   ],
                 ),
-                if (p.dates.isNotEmpty) ...[
+                if (!compact && p.dates.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   AppCard(
                     padding: const EdgeInsets.symmetric(
@@ -579,8 +566,9 @@ class _MyAttendanceSection extends ConsumerWidget {
 // ── Salary ──────────────────────────────────────────────────────────────────
 
 class _SalarySection extends ConsumerWidget {
-  const _SalarySection({required this.employeeId});
+  const _SalarySection({required this.employeeId, this.showTitle = true});
   final String employeeId;
+  final bool showTitle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -598,7 +586,7 @@ class _SalarySection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(context, 'My Salary'),
+              if (showTitle) _sectionTitle(context, 'My Salary'),
               for (final p in list)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -692,111 +680,74 @@ class _SalarySection extends ConsumerWidget {
   }
 }
 
-// ── Leave requests ──────────────────────────────────────────────────────────
+// ── Dedicated employee pages (own nav items) ────────────────────────────────
 
-class _MyLeaveSection extends ConsumerWidget {
-  const _MyLeaveSection({required this.employeeId});
-  final String employeeId;
+/// Employee's own attendance page (full: KPIs + dated list).
+class MyAttendanceScreen extends ConsumerWidget {
+  const MyAttendanceScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final leavesAsync = ref.watch(employeeLeaveHistoryProvider(employeeId));
-    final fmt = DateFormat('dd MMM yyyy');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(child: _sectionTitle(context, 'My Leave Requests')),
-            PrimaryButton(
-              label: 'Apply for leave',
-              icon: Icons.add,
-              onPressed: () => context.go('/leave'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        leavesAsync.when(
-          loading: () => const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
+    final isWide = ResponsiveBreakpoints.of(context).largerThan(TABLET);
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final empId = user?.employeeId;
+    final linked = empId != null && empId.isNotEmpty;
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isWide ? 28 : 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PageHeading(
+            title: 'My Attendance',
+            subtitle: 'Your published attendance record.',
           ),
-          error: (e, _) => AppCard(
-            child: Text('Could not load your leave: $e',
-                style: const TextStyle(color: AppColors.textMuted)),
+          const SizedBox(height: 20),
+          if (!linked)
+            const _NotLinkedCard()
+          else
+            _MyAttendanceSection(employeeId: empId, showTitle: false),
+        ],
+      ),
+    );
+  }
+}
+
+/// Employee's own salary page (monthly records + payslip downloads).
+class MySalaryScreen extends ConsumerWidget {
+  const MySalaryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isWide = ResponsiveBreakpoints.of(context).largerThan(TABLET);
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final empId = user?.employeeId;
+    final linked = empId != null && empId.isNotEmpty;
+    final payroll = linked
+        ? (ref.watch(myPayrollProvider(empId)).valueOrNull ?? const [])
+        : const [];
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isWide ? 28 : 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const PageHeading(
+            title: 'My Salary',
+            subtitle: 'Your monthly salary and payslips.',
           ),
-          data: (leaves) {
-            if (leaves.isEmpty) {
-              return const AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    SizedBox(height: 10),
-                    Icon(Icons.event_busy_outlined,
-                        size: 36, color: AppColors.textMuted),
-                    SizedBox(height: 8),
-                    Text('No leave requests yet.',
-                        style: TextStyle(color: AppColors.textMuted)),
-                    SizedBox(height: 10),
-                  ],
-                ),
-              );
-            }
-            return Column(
-              children: [
-                for (final l in leaves)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: AppCard(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: AppColors.brandBlue.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(11),
-                            ),
-                            child: Icon(_leaveTypeIcon(l.leaveType),
-                                size: 19, color: AppColors.brandBlue),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${_leaveTypeLabel(l.leaveType)} leave • '
-                                  '${l.days} day${l.days == 1 ? "" : "s"}',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                      color: AppColors.heading),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${fmt.format(l.startDate)} → ${fmt.format(l.endDate)}'
-                                  '${(l.reason?.isNotEmpty ?? false) ? "  •  ${l.reason}" : ""}',
-                                  style: const TextStyle(
-                                      fontSize: 12, color: AppColors.textMuted),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _leaveStatusPill(l.status),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ],
+          const SizedBox(height: 20),
+          if (!linked)
+            const _NotLinkedCard()
+          else if (payroll.isEmpty)
+            const AppCard(
+              child: Text(
+                'Your salary will appear here once HR sets it up.',
+                style: TextStyle(color: AppColors.textMuted),
+              ),
+            )
+          else
+            _SalarySection(employeeId: empId, showTitle: false),
+        ],
+      ),
     );
   }
 }

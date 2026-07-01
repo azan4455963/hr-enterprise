@@ -29,7 +29,9 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   static const _navItems = [
     _NavItem('/dashboard', 'Dashboard', Icons.dashboard_rounded),
-    _NavItem('/me', 'My Space', Icons.badge_rounded),
+    _NavItem('/me', 'Dashboard', Icons.dashboard_rounded),
+    _NavItem('/my-attendance', 'My Attendance', Icons.event_available_rounded),
+    _NavItem('/my-salary', 'My Salary', Icons.account_balance_wallet_rounded),
     _NavItem('/my-department', 'My Department', Icons.groups_2_rounded),
     _NavItem('/departments', 'Departments', Icons.apartment_rounded,
         badgeKey: 'departments'),
@@ -58,7 +60,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   ];
 
   /// Employee-only nav items (what employees can see)
-  static const _employeeOnlyPaths = ['/me', '/attendance', '/leave', '/messages'];
+  static const _employeeOnlyPaths = [
+    '/me',
+    '/leave',
+    '/my-salary',
+    '/my-attendance',
+    '/messages',
+  ];
 
   /// Navigate, and stamp "seen" for modules whose badge counts new items since
   /// the user last opened them (employees / tables / departments).
@@ -90,6 +98,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final location = GoRouterState.of(context).uri.path;
     final employeeViewMode = ref.watch(employeeViewModeProvider);
     final isAdmin = user != null && RolePermissions.isSuperAdmin(user.role);
+    final isEmployeeUser = user?.role == RolePermissions.employee;
     final isDark = ref.watch(themeModeProvider) == ThemeMode.dark;
 
     final visibleItems = _navItems.where((item) {
@@ -181,7 +190,8 @@ class _AppShellState extends ConsumerState<AppShell> {
               user: user,
               badgeFor: badgeFor,
               onSelect: (path) => _navigate(path),
-              onAddEmployee: () => context.go('/employees/new'),
+              onAddEmployee: () =>
+                  _navigate(isEmployeeUser ? '/my-info' : '/employees/new'),
               onSettings: () => context.go('/settings'),
               onSignOut: () => _signOut(context, ref),
             ),
@@ -205,7 +215,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             },
             onAddEmployee: () {
               Navigator.pop(context);
-              context.go('/employees/new');
+              _navigate(isEmployeeUser ? '/my-info' : '/employees/new');
             },
             onSettings: () {
               Navigator.pop(context);
@@ -726,18 +736,22 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          // Add Employee CTA
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: SizedBox(
-              width: double.infinity,
-              child: PrimaryButton(
-                label: 'Add Employee',
-                icon: Icons.add,
-                onPressed: onAddEmployee,
+          // Add Employee CTA (employees see "My Information" instead)
+          Builder(builder: (context) {
+            final isEmployee = user != null &&
+                user.role == RolePermissions.employee;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: PrimaryButton(
+                  label: isEmployee ? 'My Information' : 'Add Employee',
+                  icon: isEmployee ? Icons.badge_outlined : Icons.add,
+                  onPressed: onAddEmployee,
+                ),
               ),
-            ),
-          ),
+            );
+          }),
           const Divider(height: 1, color: AppColors.cardBorder),
           _FooterTile(
             icon: Icons.settings_outlined,

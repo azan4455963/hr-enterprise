@@ -85,6 +85,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const MySpaceScreen(),
           ),
           GoRoute(
+            path: '/my-attendance',
+            builder: (context, state) => const MyAttendanceScreen(),
+          ),
+          GoRoute(
+            path: '/my-salary',
+            builder: (context, state) => const MySalaryScreen(),
+          ),
+          GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
           ),
