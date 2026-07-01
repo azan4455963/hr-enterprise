@@ -11,7 +11,9 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/export_menu.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../../models/data_table_model.dart';
+import '../../../models/employee_model.dart';
 import '../../../providers/auth_provider.dart';
+import '../../../providers/data_providers.dart';
 import '../../../providers/data_table_providers.dart';
 import '../../../providers/service_providers.dart';
 
@@ -281,6 +283,12 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
               icon: Icons.content_paste_rounded,
               onPressed: _pasteFromClipboard,
             ),
+            if (_isSalaryTable)
+              GhostButton(
+                label: 'Sync salaries',
+                icon: Icons.sync_rounded,
+                onPressed: _syncSalaries,
+              ),
             GhostButton(
               label: 'Export PDF',
               icon: Icons.picture_as_pdf_outlined,
@@ -1483,6 +1491,106 @@ class _DataTableEditorScreenState extends ConsumerState<DataTableEditorScreen> {
     } catch (e) {
       _snack('Export failed: $e');
     }
+  }
+
+  /// A salary workbook has at least one column mentioning "salary".
+  bool get _isSalaryTable =>
+      _sheets.any((s) => s.columns.any((c) => c.toLowerCase().contains('salary')));
+
+  double? _parseMoney(String raw) {
+    final cleaned = raw.replaceAll(RegExp(r'[^0-9.\-]'), '');
+    if (cleaned.isEmpty) return null;
+    return double.tryParse(cleaned);
+  }
+
+  /// Match a row to one employee by Email → Employee ID / CNIC → Name (in that
+  /// order). A name is only used when it matches exactly one person, so
+  /// duplicate names never update the wrong record.
+  EmployeeModel? _matchEmployee(
+    List<EmployeeModel> emps, {
+    required String email,
+    required String idOrCnic,
+    required String name,
+  }) {
+    final e = email.trim().toLowerCase();
+    if (e.isNotEmpty) {
+      for (final emp in emps) {
+        if (emp.email.trim().toLowerCase() == e) return emp;
+      }
+    }
+    final v = idOrCnic.trim().toLowerCase();
+    if (v.isNotEmpty) {
+      for (final emp in emps) {
+        if (emp.id.toLowerCase() == v || (emp.cnic ?? '').toLowerCase() == v) {
+          return emp;
+        }
+      }
+    }
+    final n = name.trim().toLowerCase();
+    if (n.isNotEmpty) {
+      final matches =
+          emps.where((emp) => emp.fullName.trim().toLowerCase() == n).toList();
+      if (matches.length == 1) return matches.first;
+    }
+    return null;
+  }
+
+  /// Push the "Basic Salary" values from this workbook onto matching employee
+  /// records (only when the salary actually changed).
+  Future<void> _syncSalaries() async {
+    _syncFromGrid();
+    final employees =
+        ref.read(employeesProvider).valueOrNull ?? const <EmployeeModel>[];
+    if (employees.isEmpty) {
+      _snack('No employees to match against.');
+      return;
+    }
+    final adminId = ref.read(currentUserProvider).valueOrNull?.id ?? '';
+    final svc = ref.read(employeeServiceProvider);
+    var updated = 0, unmatched = 0;
+
+    for (final sheet in _sheets) {
+      final cols = sheet.columns;
+      int idxWhere(bool Function(String) test) =>
+          cols.indexWhere((c) => test(c.trim().toLowerCase()));
+
+      var salaryIdx =
+          idxWhere((l) => l.contains('basic') && l.contains('salary'));
+      if (salaryIdx < 0) salaryIdx = idxWhere((l) => l == 'salary');
+      if (salaryIdx < 0) continue;
+
+      final emailIdx = idxWhere((l) => l.contains('email'));
+      final idIdx = idxWhere((l) =>
+          l.contains('employee id') ||
+          l == 'id' ||
+          l == 'emp id' ||
+          l.contains('cnic'));
+      final nameIdx = idxWhere((l) => l.contains('name'));
+
+      for (final row in sheet.rows) {
+        String cell(int i) => (i >= 0 && i < row.length) ? row[i] : '';
+        final salary = _parseMoney(cell(salaryIdx));
+        if (salary == null || salary <= 0) continue;
+        final emp = _matchEmployee(
+          employees,
+          email: cell(emailIdx),
+          idOrCnic: cell(idIdx),
+          name: cell(nameIdx),
+        );
+        if (emp == null) {
+          unmatched++;
+          continue;
+        }
+        if ((emp.salary ?? -1) != salary) {
+          try {
+            await svc.updateEmployment(emp.id, salary: salary, userId: adminId);
+            updated++;
+          } catch (_) {/* skip one, keep going */}
+        }
+      }
+    }
+    _snack('Salary sync — $updated updated'
+        '${unmatched > 0 ? ', $unmatched row(s) unmatched' : ''}.');
   }
 
   void _copyCsv() {
