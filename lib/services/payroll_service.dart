@@ -77,6 +77,11 @@ class PayrollService {
     });
   }
 
+  /// Permanently remove a payroll record / slip.
+  Future<void> delete(String id) async {
+    await _collection.doc(id).delete();
+  }
+
   Future<double> getMonthlyPayrollTotal(int month, int year) async {
     final records = await watchPayroll(month: month, year: year).first;
     var total = 0.0;

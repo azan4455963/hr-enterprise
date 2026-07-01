@@ -469,11 +469,54 @@ class _PayrollTile extends ConsumerWidget {
                         .updateStatus(p.id, PaymentStatus.paid),
                   ),
                 ),
+              PermissionGate(
+                permission: 'payroll_edit',
+                child: IconButton(
+                  tooltip: 'Delete slip',
+                  icon: const Icon(Icons.delete_outline,
+                      size: 20, color: AppColors.error),
+                  onPressed: () => _deleteSlip(context, ref, p),
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _deleteSlip(
+      BuildContext context, WidgetRef ref, PayrollModel p) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete payroll slip'),
+        content: Text(
+          'Delete the ${_months[p.month - 1]} ${p.year} slip for '
+          '${p.employeeName}? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(payrollServiceProvider).delete(p.id);
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Payroll slip deleted.')));
+    } catch (e) {
+      messenger.showSnackBar(
+          SnackBar(content: Text(AppException.from(e).message)));
+    }
   }
 
   Future<void> _downloadPayslip(
