@@ -80,15 +80,17 @@ class OnboardingAdminScreen extends ConsumerWidget {
                 ),
               ];
               if (isWide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: cards[0]),
-                    const SizedBox(width: 16),
-                    Expanded(child: cards[1]),
-                    const SizedBox(width: 16),
-                    Expanded(flex: 2, child: _RapidCard(links: links)),
-                  ],
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 16),
+                      Expanded(child: cards[1]),
+                      const SizedBox(width: 16),
+                      Expanded(flex: 2, child: _RapidCard(links: links)),
+                    ],
+                  ),
                 );
               }
               return Column(
