@@ -88,6 +88,7 @@ class DataTablesScreen extends ConsumerWidget {
                   ),
                 );
               }
+              final isAdmin = RolePermissions.isSuperAdmin(user?.role);
               return Column(
                 children: [
                   for (final t in list)
@@ -99,6 +100,9 @@ class DataTablesScreen extends ConsumerWidget {
                       onExport: () => _exportExcel(context, ref, t),
                       onDelete: () =>
                           _confirmDelete(context, ref, t, user?.id ?? ''),
+                      onSetDepartment: isAdmin
+                          ? () => _setDepartment(context, ref, t, user?.id ?? '')
+                          : null,
                     ),
                 ],
               );
@@ -257,6 +261,74 @@ class DataTablesScreen extends ConsumerWidget {
     );
   }
 
+  /// Admin: assign an existing table to a department (or company-wide). Once
+  /// tagged to e.g. IT, the IT director sees it and can work on it.
+  Future<void> _setDepartment(BuildContext context, WidgetRef ref,
+      DataTableModel t, String userId) async {
+    final departments = [
+      for (final d in (ref.read(departmentsProvider).valueOrNull ?? const []))
+        d.name as String
+    ];
+    String? selected = t.departmentName;
+    final picked = await showDialog<({bool ok, String? dept})>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Set department',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('"${t.name}"',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textBody)),
+                const SizedBox(height: 4),
+                const Text(
+                  'The department director will then see this table and can '
+                  'work on it.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String?>(
+                  initialValue:
+                      departments.contains(selected) ? selected : null,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Department'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Company-wide (admin only)')),
+                    for (final d in departments)
+                      DropdownMenuItem<String?>(value: d, child: Text(d)),
+                  ],
+                  onChanged: (v) => setLocal(() => selected = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            PrimaryButton(
+                label: 'Save',
+                onPressed: () =>
+                    Navigator.pop(ctx, (ok: true, dept: selected))),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !picked.ok) return;
+    await ref
+        .read(dataTableServiceProvider)
+        .setDepartment(t.id, departmentName: picked.dept, userId: userId);
+  }
+
   Future<void> _rename(BuildContext context, WidgetRef ref, DataTableModel t,
       String userId) async {
     final name = await _nameDialog(context, title: 'Rename Table', initial: t.name);
@@ -400,12 +472,14 @@ class _TableCard extends StatelessWidget {
     required this.onRename,
     required this.onExport,
     required this.onDelete,
+    this.onSetDepartment,
   });
   final DataTableModel table;
   final VoidCallback onOpen;
   final VoidCallback onRename;
   final VoidCallback onExport;
   final VoidCallback onDelete;
+  final VoidCallback? onSetDepartment;
 
   @override
   Widget build(BuildContext context) {
@@ -457,10 +531,11 @@ class _TableCard extends StatelessWidget {
                 onSelected: (v) {
                   if (v == 'rename') onRename();
                   if (v == 'export') onExport();
+                  if (v == 'department') onSetDepartment?.call();
                   if (v == 'delete') onDelete();
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
                     value: 'rename',
                     child: Row(children: [
                       Icon(Icons.edit_outlined, size: 18),
@@ -468,7 +543,16 @@ class _TableCard extends StatelessWidget {
                       Text('Rename'),
                     ]),
                   ),
-                  PopupMenuItem(
+                  if (onSetDepartment != null)
+                    const PopupMenuItem(
+                      value: 'department',
+                      child: Row(children: [
+                        Icon(Icons.apartment_rounded, size: 18),
+                        SizedBox(width: 10),
+                        Text('Set department'),
+                      ]),
+                    ),
+                  const PopupMenuItem(
                     value: 'export',
                     child: Row(children: [
                       Icon(Icons.file_download_outlined, size: 18),
@@ -476,7 +560,7 @@ class _TableCard extends StatelessWidget {
                       Text('Export to Excel'),
                     ]),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'delete',
                     child: Row(children: [
                       Icon(Icons.delete_outline, size: 18, color: AppColors.error),

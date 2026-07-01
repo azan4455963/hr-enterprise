@@ -222,6 +222,23 @@ class DataTableService {
     );
   }
 
+  /// Assign (or clear, with null) a table's department. Tagging an untagged
+  /// table to a department makes it visible to that department's director.
+  Future<void> setDepartment(String id,
+      {String? departmentName, required String userId}) async {
+    await _ref.doc(id).update({
+      'departmentName': departmentName,
+      'updatedAt': DateTime.now(),
+    });
+    await _audit.log(
+      userId: userId,
+      action: 'update',
+      module: 'tables',
+      targetId: id,
+      details: {'departmentName': departmentName},
+    );
+  }
+
   Future<void> rename(String id,
       {required String name, required String userId}) async {
     await _ref
