@@ -9,10 +9,12 @@ import 'data_table_providers.dart';
 import 'reminders_providers.dart';
 
 /// How many items have a createdAt newer than the user's last-seen time for
-/// [module]. Returns 0 until they've opened it once (no baseline → no badge).
+/// [module]. If they've never opened it, fall back to the last 30 days so items
+/// created before their first visit (e.g. a table a director just made) still
+/// surface; opening the page then sets a precise baseline and clears the badge.
 int _newSince(UserModel? user, String module, Iterable<DateTime?> createdAts) {
-  final since = user?.lastSeen[module];
-  if (since == null) return 0;
+  final since = user?.lastSeen[module] ??
+      DateTime.now().subtract(const Duration(days: 30));
   var n = 0;
   for (final c in createdAts) {
     if (c != null && c.isAfter(since)) n++;
