@@ -112,6 +112,31 @@ class EmployeeService {
     );
   }
 
+  /// Update just the employment fields (salary / position / department) without
+  /// rebuilding the whole model. Used by the onboarding review dialog and the
+  /// payroll → employee salary sync. Only non-null values are written.
+  Future<void> updateEmployment(
+    String id, {
+    double? salary,
+    String? position,
+    String? departmentName,
+    required String userId,
+  }) async {
+    final data = <String, dynamic>{};
+    if (salary != null) data['salary'] = salary;
+    if (position != null) data['position'] = position;
+    if (departmentName != null) data['departmentName'] = departmentName;
+    if (data.isEmpty) return;
+    data['updatedAt'] = DateTime.now();
+    await _employees.update(id, data);
+    await _audit.log(
+      userId: userId,
+      action: 'edit',
+      module: 'employees',
+      targetId: id,
+    );
+  }
+
   /// Bulk-import employees parsed from a Google Sheet.
   ///
   /// Rows whose email already exists are skipped (no duplicates). Rows without

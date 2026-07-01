@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/permission_gate.dart';
 import '../../../models/employee_model.dart';
 import '../../../models/payroll_model.dart';
+import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
 import '../../../providers/data_table_providers.dart';
 import '../../../providers/service_providers.dart';
@@ -588,7 +589,10 @@ void _showPayrollDialog(BuildContext context, WidgetRef ref,
             if (!formKey.currentState!.validate() || selectedId == null) return;
             final messenger = ScaffoldMessenger.of(ctx);
             try {
+              final baseSalary = double.parse(base.text);
+              final String syncEmployeeId;
               if (isEdit) {
+                syncEmployeeId = existing.employeeId;
                 await ref.read(payrollServiceProvider).update(
                       PayrollModel(
                         id: existing.id,
@@ -596,7 +600,7 @@ void _showPayrollDialog(BuildContext context, WidgetRef ref,
                         employeeName: existing.employeeName,
                         month: existing.month,
                         year: existing.year,
-                        baseSalary: double.parse(base.text),
+                        baseSalary: baseSalary,
                         overtime: double.tryParse(overtime.text) ?? 0,
                         deductions: double.tryParse(deductions.text) ?? 0,
                         bonuses: double.tryParse(bonuses.text) ?? 0,
@@ -609,6 +613,7 @@ void _showPayrollDialog(BuildContext context, WidgetRef ref,
               } else {
                 final emp =
                     employees.firstWhere((e) => e.id == selectedId);
+                syncEmployeeId = emp.id;
                 await ref.read(payrollServiceProvider).createPayroll(
                       PayrollModel(
                         id: '',
@@ -616,13 +621,20 @@ void _showPayrollDialog(BuildContext context, WidgetRef ref,
                         employeeName: emp.fullName,
                         month: month.month,
                         year: month.year,
-                        baseSalary: double.parse(base.text),
+                        baseSalary: baseSalary,
                         overtime: double.tryParse(overtime.text) ?? 0,
                         deductions: double.tryParse(deductions.text) ?? 0,
                         bonuses: double.tryParse(bonuses.text) ?? 0,
                       ),
                     );
               }
+              // Keep the employee's official salary in sync with payroll.
+              await ref.read(employeeServiceProvider).updateEmployment(
+                    syncEmployeeId,
+                    salary: baseSalary,
+                    userId:
+                        ref.read(currentUserProvider).valueOrNull?.id ?? '',
+                  );
               if (ctx.mounted) Navigator.pop(ctx);
             } catch (e) {
               messenger.showSnackBar(

@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../../../models/employee_model.dart';
 import '../../../models/onboarding_model.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../providers/data_providers.dart';
@@ -379,6 +380,8 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
   late final TextEditingController _position;
   String? _department;
   bool _busy = false;
+  bool _prefilled = false;
+  String? _employeeId; // linked employee, for editing after approval
 
   @override
   void initState() {
@@ -386,6 +389,10 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
     _salary = TextEditingController();
     _position = TextEditingController(text: widget.submission.position ?? '');
     _department = widget.submission.department;
+    // Pending is prefilled from the submission; approved prefills from the live
+    // employee record in build() once it loads.
+    _prefilled =
+        widget.submission.status == OnboardingSubmissionStatus.submitted;
   }
 
   @override
@@ -406,6 +413,31 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
         d.name as String
     ];
     final name = '${s.firstName ?? ''} ${s.lastName ?? ''}'.trim();
+
+    // After approval, load the linked employee so HR can update their live
+    // salary / position / department right here too.
+    if (!_pending) {
+      final emps =
+          ref.watch(employeesProvider).valueOrNull ?? const <EmployeeModel>[];
+      final email = (s.email ?? '').toLowerCase();
+      EmployeeModel? emp;
+      for (final e in emps) {
+        if (e.email.toLowerCase() == email) {
+          emp = e;
+          break;
+        }
+      }
+      if (emp != null) {
+        _employeeId = emp.id;
+        if (!_prefilled) {
+          _salary.text = emp.salary != null ? emp.salary!.toStringAsFixed(0) : '';
+          if ((emp.position ?? '').isNotEmpty) _position.text = emp.position!;
+          _department = emp.departmentName ?? _department;
+          _prefilled = true;
+        }
+      }
+    }
+    final canEdit = _pending || _employeeId != null;
 
     return Theme(
       data: AppTheme.light(),
@@ -457,7 +489,7 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
                 Text(
                   _pending
                       ? 'Set by HR (not entered by the employee)'
-                      : 'Set by HR at approval',
+                      : 'Employment — edit and save',
                   style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -466,7 +498,7 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _salary,
-                  enabled: _pending,
+                  enabled: canEdit && !_busy,
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     labelText: 'Salary',
@@ -478,7 +510,7 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: _position,
-                  enabled: _pending,
+                  enabled: canEdit && !_busy,
                   decoration: const InputDecoration(
                     labelText: 'Position / Designation',
                     isDense: true,
@@ -497,8 +529,9 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
                     for (final d in departments)
                       DropdownMenuItem<String?>(value: d, child: Text(d)),
                   ],
-                  onChanged:
-                      _pending ? (v) => setState(() => _department = v) : null,
+                  onChanged: (canEdit && !_busy)
+                      ? (v) => setState(() => _department = v)
+                      : null,
                 ),
               ],
             ),
@@ -521,11 +554,44 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
               ]
             : [
                 TextButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _busy ? null : () => Navigator.pop(context),
                     child: const Text('Close')),
+                if (_employeeId != null)
+                  PrimaryButton(
+                    label: _busy ? 'Saving…' : 'Save changes',
+                    onPressed: _busy ? () {} : () => _saveChanges(),
+                  ),
               ],
       ),
     );
+  }
+
+  Future<void> _saveChanges() async {
+    final id = _employeeId;
+    if (id == null) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(employeeServiceProvider).updateEmployment(
+            id,
+            salary: double.tryParse(_salary.text.trim()),
+            position:
+                _position.text.trim().isEmpty ? null : _position.text.trim(),
+            departmentName: _department,
+            userId: widget.adminId,
+          );
+      if (mounted) {
+        messenger
+            .showSnackBar(const SnackBar(content: Text('Employee updated')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        messenger.showSnackBar(
+            SnackBar(content: Text(AppException.from(e).message)));
+      }
+    }
   }
 
   Widget _kv(String k, String? v) => Padding(
