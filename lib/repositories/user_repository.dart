@@ -56,6 +56,15 @@ class UserRepository {
     await doc(uid).delete();
   }
 
+  /// Stamp "now" as when [uid] last opened [module] (for unread/new badges).
+  Future<void> markSeen(String uid, String module) async {
+    try {
+      await doc(uid).update({'lastSeen.$module': FieldValue.serverTimestamp()});
+    } catch (_) {
+      // Non-critical (e.g. offline) — badges just won't clear this time.
+    }
+  }
+
   Future<bool> exists(String uid) async {
     final snap = await doc(uid).get();
     return snap.exists;

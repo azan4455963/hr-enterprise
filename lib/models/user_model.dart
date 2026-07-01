@@ -16,6 +16,7 @@ class UserModel extends Equatable {
     this.companyId = 'default_company',
     this.permissions = const [],
     this.isActive = true,
+    this.lastSeen = const {},
     this.createdAt,
     this.lastLoginAt,
   });
@@ -44,6 +45,10 @@ class UserModel extends Equatable {
   final String companyId;
   final List<String> permissions;
   final bool isActive;
+
+  /// Per-module "last opened" times, for unread/new badges (e.g. employees,
+  /// tables, departments). Written via UserRepository.markSeen.
+  final Map<String, DateTime> lastSeen;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -73,9 +78,20 @@ class UserModel extends Equatable {
       companyId: map['companyId'] as String? ?? 'default_company',
       permissions: List<String>.from(map['permissions'] as List? ?? []),
       isActive: map['isActive'] as bool? ?? true,
+      lastSeen: _parseLastSeen(map['lastSeen']),
       createdAt: _parseDate(map['createdAt']),
       lastLoginAt: _parseDate(map['lastLoginAt']),
     );
+  }
+
+  static Map<String, DateTime> _parseLastSeen(dynamic raw) {
+    if (raw is! Map) return const {};
+    final out = <String, DateTime>{};
+    raw.forEach((k, v) {
+      final d = _parseDate(v);
+      if (d != null) out[k.toString()] = d;
+    });
+    return out;
   }
 
   Map<String, dynamic> toMap() => {
@@ -125,5 +141,5 @@ class UserModel extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, email, role, departmentId, employeeId, permissions];
+      [id, email, role, departmentId, employeeId, permissions, lastSeen];
 }

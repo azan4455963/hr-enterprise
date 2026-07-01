@@ -80,6 +80,17 @@ class ChatService {
   Stream<List<ConversationModel>> watchAll() =>
       _convos.snapshots().map(_sorted);
 
+  /// Mark [uid] as having read [conversationId] up to now (clears their badge).
+  Future<void> markRead(String conversationId, String uid) async {
+    try {
+      await _convos.doc(conversationId).update({
+        'readAt.$uid': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // Non-critical.
+    }
+  }
+
   Stream<ConversationModel?> watchConversation(String id) =>
       _convos.doc(id).snapshots().map(
           (d) => d.exists ? ConversationModel.fromMap(d.id, d.data()!) : null);

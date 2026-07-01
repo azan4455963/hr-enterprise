@@ -11,6 +11,7 @@ import '../../features/ai/widgets/ai_assistant_panel.dart';
 import '../../features/dashboard/widgets/employee_search_dialog.dart';
 import '../../providers/ai_providers.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/badge_providers.dart';
 import '../../providers/data_providers.dart';
 import '../../providers/google_sheets_providers.dart';
 import '../../providers/service_providers.dart';
@@ -30,15 +31,19 @@ class _AppShellState extends ConsumerState<AppShell> {
     _NavItem('/dashboard', 'Dashboard', Icons.dashboard_rounded),
     _NavItem('/me', 'My Space', Icons.badge_rounded),
     _NavItem('/my-department', 'My Department', Icons.groups_2_rounded),
-    _NavItem('/departments', 'Departments', Icons.apartment_rounded),
-    _NavItem('/users', 'Users & Roles', Icons.manage_accounts_rounded),
+    _NavItem('/departments', 'Departments', Icons.apartment_rounded,
+        badgeKey: 'departments'),
+    _NavItem('/users', 'Users & Roles', Icons.manage_accounts_rounded,
+        badgeKey: 'users'),
     _NavItem('/activity', 'Activity Log', Icons.history_rounded),
-    _NavItem('/tables', 'Tables', Icons.grid_on_rounded),
+    _NavItem('/tables', 'Tables', Icons.grid_on_rounded, badgeKey: 'tables'),
     _NavItem('/assets', 'Assets', Icons.devices_rounded),
-    _NavItem('/employees', 'Employees', Icons.people_alt_rounded),
+    _NavItem('/employees', 'Employees', Icons.people_alt_rounded,
+        badgeKey: 'employees'),
     _NavItem('/attendance', 'Attendance', Icons.event_available_rounded),
     _NavItem('/leave', 'Leave', Icons.beach_access_rounded, badgeKey: 'leave'),
-    _NavItem('/messages', 'Messages', Icons.chat_bubble_outline_rounded),
+    _NavItem('/messages', 'Messages', Icons.chat_bubble_outline_rounded,
+        badgeKey: 'messages'),
     _NavItem('/payroll', 'Payroll', Icons.account_balance_wallet_rounded),
     _NavItem(
       '/onboarding',
@@ -46,13 +51,33 @@ class _AppShellState extends ConsumerState<AppShell> {
       Icons.person_add_alt_1_rounded,
       badgeKey: 'onboarding',
     ),
-    _NavItem('/reminders', 'Reminders', Icons.notifications_active_rounded),
+    _NavItem('/reminders', 'Reminders', Icons.notifications_active_rounded,
+        badgeKey: 'reminders'),
     _NavItem('/reports', 'Reports', Icons.bar_chart_rounded),
     _NavItem('/google-sheets', 'Sheets & Drive', Icons.table_chart_rounded),
   ];
 
   /// Employee-only nav items (what employees can see)
   static const _employeeOnlyPaths = ['/me', '/attendance', '/leave', '/messages'];
+
+  /// Navigate, and stamp "seen" for modules whose badge counts new items since
+  /// the user last opened them (employees / tables / departments).
+  void _navigate(String path) {
+    final uid = ref.read(currentUserProvider).valueOrNull?.id;
+    if (uid != null) {
+      final module = path.startsWith('/employees')
+          ? 'employees'
+          : path.startsWith('/tables')
+              ? 'tables'
+              : path.startsWith('/departments')
+                  ? 'departments'
+                  : null;
+      if (module != null) {
+        ref.read(userRepositoryProvider).markSeen(uid, module);
+      }
+    }
+    context.go(path);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +106,12 @@ class _AppShellState extends ConsumerState<AppShell> {
         .when(data: (l) => l.length, loading: () => 0, error: (_, _) => 0);
     final onboardingBadge = ref.watch(onboardingPendingCountProvider);
     final alertsBadge = ref.watch(unreadNotificationsCountProvider);
+    final messagesBadge = ref.watch(unreadMessagesCountProvider);
+    final usersBadge = ref.watch(accessRequestsBadgeProvider);
+    final remindersBadge = ref.watch(remindersBadgeProvider);
+    final employeesBadge = ref.watch(newEmployeesCountProvider);
+    final tablesBadge = ref.watch(newTablesCountProvider);
+    final departmentsBadge = ref.watch(newDepartmentsCountProvider);
 
     int badgeFor(String? key) {
       switch (key) {
@@ -88,6 +119,18 @@ class _AppShellState extends ConsumerState<AppShell> {
           return leaveBadge;
         case 'onboarding':
           return onboardingBadge;
+        case 'messages':
+          return messagesBadge;
+        case 'users':
+          return usersBadge;
+        case 'reminders':
+          return remindersBadge;
+        case 'employees':
+          return employeesBadge;
+        case 'tables':
+          return tablesBadge;
+        case 'departments':
+          return departmentsBadge;
         default:
           return 0;
       }
@@ -137,7 +180,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               selectedPath: location,
               user: user,
               badgeFor: badgeFor,
-              onSelect: (path) => context.go(path),
+              onSelect: (path) => _navigate(path),
               onAddEmployee: () => context.go('/employees/new'),
               onSettings: () => context.go('/settings'),
               onSignOut: () => _signOut(context, ref),
@@ -158,7 +201,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             badgeFor: badgeFor,
             onSelect: (path) {
               Navigator.pop(context);
-              context.go(path);
+              _navigate(path);
             },
             onAddEmployee: () {
               Navigator.pop(context);
@@ -177,7 +220,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           backgroundColor: AppColors.surface,
           selectedIndex: selectedIndex.clamp(0, 4),
           onDestinationSelected: (i) {
-            if (i < visibleItems.length) context.go(visibleItems[i].path);
+            if (i < visibleItems.length) _navigate(visibleItems[i].path);
           },
           destinations: visibleItems.take(5).map((n) {
             final badge = badgeFor(n.badgeKey);

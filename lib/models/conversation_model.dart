@@ -10,6 +10,7 @@ class ConversationModel {
     this.lastMessage,
     this.lastSenderId,
     this.lastMessageAt,
+    this.readAt = const {},
   });
 
   final String id;
@@ -18,8 +19,17 @@ class ConversationModel {
   final String? lastMessage;
   final String? lastSenderId;
   final DateTime? lastMessageAt;
+  final Map<String, DateTime> readAt; // uid -> when they last read
 
   bool hasParticipant(String uid) => participantIds.contains(uid);
+
+  /// True when there's a message from someone else that [uid] hasn't read.
+  bool unreadFor(String uid) {
+    if (lastMessageAt == null) return false;
+    if (lastSenderId == uid) return false; // my own last message
+    final seen = readAt[uid];
+    return seen == null || lastMessageAt!.isAfter(seen);
+  }
 
   String otherId(String myUid) =>
       participantIds.firstWhere((p) => p != myUid, orElse: () => myUid);
@@ -34,6 +44,14 @@ class ConversationModel {
     if (raw is Map) {
       raw.forEach((k, v) => names[k.toString()] = v.toString());
     }
+    final reads = <String, DateTime>{};
+    final rawReads = m['readAt'];
+    if (rawReads is Map) {
+      rawReads.forEach((k, v) {
+        final d = parseFirestoreDate(v);
+        if (d != null) reads[k.toString()] = d;
+      });
+    }
     return ConversationModel(
       id: id,
       participantIds: List<String>.from(m['participantIds'] as List? ?? const []),
@@ -41,6 +59,7 @@ class ConversationModel {
       lastMessage: m['lastMessage'] as String?,
       lastSenderId: m['lastSenderId'] as String?,
       lastMessageAt: parseFirestoreDate(m['lastMessageAt']),
+      readAt: reads,
     );
   }
 }

@@ -37,6 +37,14 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
     final convo = ref.watch(conversationProvider(widget.conversationId)).valueOrNull;
     final messages =
         ref.watch(conversationMessagesProvider(widget.conversationId));
+
+    // Clear the unread badge for me whenever this thread's messages load/change.
+    ref.listen(conversationMessagesProvider(widget.conversationId), (_, _) {
+      final uid = ref.read(currentUserProvider).valueOrNull?.id;
+      if (uid != null) {
+        ref.read(chatServiceProvider).markRead(widget.conversationId, uid);
+      }
+    });
     if (me == null) {
       return const Center(child: CircularProgressIndicator());
     }
