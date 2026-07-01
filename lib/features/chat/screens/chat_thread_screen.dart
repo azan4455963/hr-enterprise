@@ -26,6 +26,20 @@ class _ChatThreadScreenState extends ConsumerState<ChatThreadScreen> {
   bool _sending = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Mark read on open — do it explicitly (not only via ref.listen) so it
+    // fires even when the messages are already cached (no change to listen to).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final uid = ref.read(currentUserProvider).valueOrNull?.id;
+      if (uid != null) {
+        ref.read(chatServiceProvider).markRead(widget.conversationId, uid);
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
