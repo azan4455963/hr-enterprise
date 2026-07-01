@@ -75,4 +75,20 @@ class UserAdminService {
       details: {'isActive': active},
     );
   }
+
+  /// Remove a user's app profile (deletes `users/{uid}`). Note: this does not
+  /// delete their Firebase Auth login; if they sign in again a fresh employee
+  /// profile is created. To keep someone out permanently, disable instead.
+  Future<void> deleteUser({
+    required String uid,
+    required String adminId,
+  }) async {
+    await _users.deleteUser(uid);
+    await _audit.log(
+      userId: adminId,
+      action: 'delete',
+      module: 'users',
+      targetId: uid,
+    );
+  }
 }

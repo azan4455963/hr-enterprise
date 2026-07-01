@@ -52,6 +52,10 @@ class UserRepository {
     await doc(uid).update(data);
   }
 
+  Future<void> deleteUser(String uid) async {
+    await doc(uid).delete();
+  }
+
   Future<bool> exists(String uid) async {
     final snap = await doc(uid).get();
     return snap.exists;

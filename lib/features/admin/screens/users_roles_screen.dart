@@ -15,11 +15,18 @@ import '../../../providers/service_providers.dart';
 
 /// Admin-only: see all users and manage their roles (Admin / Director /
 /// Employee), assign director departments, and enable/disable accounts.
-class UsersRolesScreen extends ConsumerWidget {
+class UsersRolesScreen extends ConsumerStatefulWidget {
   const UsersRolesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UsersRolesScreen> createState() => _UsersRolesScreenState();
+}
+
+class _UsersRolesScreenState extends ConsumerState<UsersRolesScreen> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
     final isWide = ResponsiveBreakpoints.of(context).largerThan(TABLET);
     final usersAsync = ref.watch(usersProvider);
     final me = ref.watch(currentUserProvider).valueOrNull;
@@ -36,6 +43,17 @@ class UsersRolesScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           const _PendingRequests(),
+          TextField(
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search by name, email or employee ID',
+              prefixIcon: const Icon(Icons.search_rounded, size: 20),
+              isDense: true,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+          const SizedBox(height: 16),
           usersAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) =>
@@ -45,9 +63,27 @@ class UsersRolesScreen extends ConsumerWidget {
                 return const Text('No users yet',
                     style: TextStyle(color: AppColors.textMuted));
               }
+              final q = _query.trim().toLowerCase();
+              final filtered = q.isEmpty
+                  ? users
+                  : users.where((u) {
+                      final name = (u.displayName ?? '').toLowerCase();
+                      final email = u.email.toLowerCase();
+                      final eid = (u.employeeId ?? '').toLowerCase();
+                      return name.contains(q) ||
+                          email.contains(q) ||
+                          eid.contains(q);
+                    }).toList();
+              if (filtered.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Text('No users match "$_query".',
+                      style: const TextStyle(color: AppColors.textMuted)),
+                );
+              }
               return Column(
                 children: [
-                  for (final u in users)
+                  for (final u in filtered)
                     _UserCard(user: u, isSelf: u.id == me?.id),
                 ],
               );
@@ -168,6 +204,15 @@ class _UserCard extends ConsumerWidget {
                           : 'Enable account'),
                     ]),
                   ),
+                  const PopupMenuItem(
+                    value: 'remove',
+                    child: Row(children: [
+                      Icon(Icons.person_remove_alt_1_outlined,
+                          size: 18, color: AppColors.error),
+                      SizedBox(width: 10),
+                      Text('Remove user'),
+                    ]),
+                  ),
                 ],
               ),
           ],
@@ -197,6 +242,41 @@ class _UserCard extends ConsumerWidget {
         context: context,
         builder: (_) => _AccessDialog(user: user, adminId: me?.id ?? ''),
       );
+      return;
+    }
+    if (action == 'remove') {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => Theme(
+          data: AppTheme.light(),
+          child: AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Remove user',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+            content: Text(
+              'Remove "${user.displayName ?? user.email}"? This deletes their '
+              'app profile and access. (Their login still exists — to keep them '
+              'out for good, use "Disable account" instead.)',
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.error,
+                    foregroundColor: Colors.white),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Remove'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (ok == true) {
+        await service.deleteUser(uid: user.id, adminId: me?.id ?? '');
+      }
     }
   }
 }
